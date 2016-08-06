@@ -1,0 +1,5 @@
+docopt==0.4.0
+mock==2.0.0
+tox==2.3.1
+mkdocs>=0.15.3
+python-bitcoinlib==0.5.0

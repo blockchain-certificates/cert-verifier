@@ -25,6 +25,7 @@ class InvalidTransactionError(Error):
 
 def verify(transaction_id, signed_local_file):
     signed_local_json = json.loads(signed_local_file)
+    # TODO: refactor
     r = requests.get(
         "https://blockchain.info/rawtx/%s?cors=true" %
         transaction_id)
@@ -51,12 +52,14 @@ def verify(transaction_id, signed_local_file):
             ("Comparing local and blockchain hashes", compare_hash_result))
 
         # check author
-        issuing_address = ''  # config.get_key_by_type('CERT_PUBKEY')
+        signer_url = signed_local_json['certificate']['issuer']['id']
+        keys = get_issuer_keys(signer_url)
+        issuing_address = keys['issuer_key'][0]['key']
         verify_authors = check_author(issuing_address, signed_local_json)
         verify_response.append(("Checking signature", verify_authors))
 
         # check revocation
-        revocation_address = ''  # config.get_key_by_type('CERT_REVOKEKEY')
+        revocation_address = keys['revocation_key'][0]['key']
         not_revoked = check_revocation(remote_json, revocation_address)
         verify_response.append(("Checking not revoked by issuer", not_revoked))
 
@@ -64,6 +67,19 @@ def verify(transaction_id, signed_local_file):
             verified = True
         verify_response.append(("Verified", verified))
     return verify_response
+
+def get_issuer_keys(signer_url):
+    r = requests.get(signer_url)
+    remote_json = None
+    if r.status_code != 200:
+        logging.error(
+            'Error looking up issuer keys at url=%s, status_code=%d',
+            signer_url, r.status_code)
+    else:
+        remote_json = r.json()
+        logging.info(
+            'Found issuer keys at url=%s', signer_url)
+    return remote_json
 
 
 def get_hash_from_bc_op(tx_json):
@@ -116,6 +132,7 @@ def check_author(address, signed_json):
 
 
 if __name__ == "__main__":
-    with open('sample-cert.json') as cert_file:
+    with open('sample_data/1.1.0/sample_signed_cert-1.1.0.json') as cert_file:
         cert_json = cert_file.read()
-        verify('1234', cert_json)
+        result = verify('d5df311055bf0fe656b9d6fa19aad15c915b47303e06677b812773c37050e35d', cert_json)
+        print(result)

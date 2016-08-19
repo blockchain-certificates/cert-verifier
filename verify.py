@@ -25,49 +25,81 @@ class InvalidTransactionError(Error):
     pass
 
 
-def verify(transaction_id, signed_local_json, signed_local_file):
-    # TODO: refactor
+def lookup_transaction(transaction_id):
     r = requests.get(
         "https://blockchain.info/rawtx/%s?cors=true" %
         transaction_id)
-    verify_response = []
-    verified = False
     if r.status_code != 200:
         logging.error(
             'Error looking up by transaction_id=%s, status_code=%d',
             transaction_id,
             r.status_code)
+        return None
+    else:
+        return r.json()
+
+
+
+def verify(transaction_id, signed_local_json, signed_local_file):
+    verify_response = []
+    verified = False
+
+    # TODO: add some initial validation before looking up transaction
+
+    transaction_info = lookup_transaction(transaction_id)
+
+    if not transaction_info:
         verify_response.append(('Looking up by transaction_id', False))
         verify_response.append(("Verified", False))
-    else:
-        verify_response.append(
-            ("Computing SHA256 digest of local certificate", "DONE"))
-        verify_response.append(("Fetching hash in OP_RETURN field", "DONE"))
-        remote_json = r.json()
+        return verify_response
 
-        # compare hashes
-        local_hash = compute_hash(signed_local_file)
-        remote_hash = fetch_hash_from_chain(remote_json)
-        compare_hash_result = compare_hashes(local_hash, remote_hash)
-        verify_response.append(
-            ("Comparing local and blockchain hashes", compare_hash_result))
+    # transaction was found
+    verify_response.append(
+        ("Computing SHA256 digest of local certificate", "DONE"))
+    verify_response.append(("Fetching hash in OP_RETURN field", "DONE"))
 
-        # check author
-        signer_url = signed_local_json['certificate']['issuer']['id']
-        keys = get_issuer_keys(signer_url)
-        issuing_address = keys['issuer_key'][0]['key']
-        verify_authors = check_author(issuing_address, signed_local_json)
-        verify_response.append(("Checking signature", verify_authors))
+    signer_url = signed_local_json['certificate']['issuer']['id']
+    uid = signed_local_json['assertion']['uid']
+    signature = signed_local_json['signature']
 
-        # check revocation
-        revocation_address = keys['revocation_key'][0]['key']
-        not_revoked = check_revocation(remote_json, revocation_address)
-        verify_response.append(("Checking not revoked by issuer", not_revoked))
+    # compare hashes
+    compare_hash_result = compare_hashes(signed_local_file, transaction_info)
+    verify_response.append(
+        ("Comparing local and blockchain hashes", compare_hash_result))
 
-        if compare_hash_result and verify_authors and not_revoked:
-            verified = True
-        verify_response.append(("Verified", verified))
+    keys = get_issuer_keys(signer_url)
+    signing_key = keys['issuer_key'][0]['key']
+    revocation_address = keys['revocation_key'][0]['key']
+
+    # check author
+    author_verified = check_issuer_signature(signing_key, uid, signature)
+    verify_response.append(("Checking signature", author_verified))
+
+    # check if it's been revoked by the issuer
+    not_revoked = check_revocation(transaction_info, revocation_address)
+    verify_response.append(("Checking not revoked by issuer", not_revoked))
+
+    if compare_hash_result and author_verified and not_revoked:
+        verified = True
+    verify_response.append(("Verified", verified))
     return verify_response
+
+
+def check_issuer_signature(signing_key, uid, signature):
+    if signing_key is None or uid is None or signature is None:
+        return False
+
+    message = BitcoinMessage(uid)
+    return VerifyMessage(signing_key, message, signature)
+
+
+
+def compare_hashes(signed_local_file, transaction_info):
+    local_hash = compute_hash(signed_local_file)
+    remote_hash = get_hash_from_bc_op(transaction_info)
+    compare_hash_result = _compare_hashes(local_hash, remote_hash)
+    return compare_hash_result
+
 
 def get_issuer_keys(signer_url):
     r = requests.get(signer_url)
@@ -91,8 +123,7 @@ def get_hash_from_bc_op(tx_json):
             op_tx = o
     if not op_tx:
         raise InvalidTransactionError('transaction is missing op_return ')
-    hashed_json = unhexlify(op_tx['script'])
-    return hashed_json
+    return op_tx['script']
 
 
 def check_revocation(tx_json, revoke_address):
@@ -110,25 +141,9 @@ def compute_hash(doc):
     return hashlib.sha256(doc_bytes).hexdigest()
 
 
-def fetch_hash_from_chain(tx_json):
-    hash_from_bc = hexlify(get_hash_from_bc_op(tx_json))
-    return hash_from_bc
-
-
-def compare_hashes(hash1, hash2):
+def _compare_hashes(hash1, hash2):
     if hash1 in hash2 or hash1 == hash2:
         return True
-    return False
-
-
-def check_author(address, signed_json):
-    uid = signed_json['assertion']['uid']
-    message = BitcoinMessage(uid)
-    if signed_json.get('signature', None):
-        signature = signed_json['signature']
-        logging.debug('Found signature for uid=%s; verifying message', uid)
-        return VerifyMessage(address, message, signature)
-    logging.warning('Missing signature for uid=%s', uid)
     return False
 
 

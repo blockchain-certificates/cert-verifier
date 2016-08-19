@@ -6,6 +6,8 @@ import sys
 import hashlib
 import requests
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
+from cert_schema.schema_tools import schema_validator
+
 
 unhexlify = binascii.unhexlify
 hexlify = binascii.hexlify
@@ -23,8 +25,7 @@ class InvalidTransactionError(Error):
     pass
 
 
-def verify(transaction_id, signed_local_file):
-    signed_local_json = json.loads(signed_local_file)
+def verify(transaction_id, signed_local_json, signed_local_file):
     # TODO: refactor
     r = requests.get(
         "https://blockchain.info/rawtx/%s?cors=true" %
@@ -133,6 +134,10 @@ def check_author(address, signed_json):
 
 if __name__ == "__main__":
     with open('sample_data/1.1.0/sample_signed_cert-1.1.0.json') as cert_file:
-        cert_json = cert_file.read()
-        result = verify('d5df311055bf0fe656b9d6fa19aad15c915b47303e06677b812773c37050e35d', cert_json)
+        cert_json = json.load(cert_file)
+        schema_validator.validate_v1_1_0(cert_json)
+
+
+    with open('sample_data/1.1.0/sample_signed_cert-1.1.0.json', 'rb') as cert_file:
+        result = verify('d5df311055bf0fe656b9d6fa19aad15c915b47303e06677b812773c37050e35d', cert_json, cert_file.read())
         print(result)

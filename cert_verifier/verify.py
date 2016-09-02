@@ -1,3 +1,6 @@
+"""
+Verify blockchain certificates (http://www.blockcerts.org/)
+"""
 import binascii
 import hashlib
 import json
@@ -11,8 +14,9 @@ from cert_schema.schema_tools import schema_validator
 from merkleproof import utils
 from merkleproof.MerkleTree import sha256
 from pyld import jsonld
+from cert_verifier.errors import *
 
-from cert_verifier.connectors import BlockcypherConnector
+from cert_verifier.connectors import BlockcypherConnector, createTransactionLookupConnector
 
 unhexlify = binascii.unhexlify
 hexlify = binascii.hexlify
@@ -21,13 +25,6 @@ if sys.version > '3':
     hexlify = lambda b: binascii.hexlify(b).decode('utf8')
 
 
-class Error(Exception):
-    """Base class for exceptions in this module"""
-    pass
-
-
-class InvalidTransactionError(Error):
-    pass
 
 
 def check_issuer_signature(signing_key, uid, signature):
@@ -65,69 +62,78 @@ def get_issuer_keys(signer_url):
     return remote_json
 
 
-def verify_v1_2(signed_local_json, chain=None):
-    if chain:
-        connector = BlockcypherConnector(chain)
+def verify_v1_2(cert_json, chain='mainnet'):
+    connector = createTransactionLookupConnector(chain)
+    if chain == 'testnet':
         bitcoin.SelectParams(chain)
 
     # first ensure this is a valid v1.2 cert
-    schema_validator.validate_v1_2_0(cert_json)
-
-    verify_response = []
+    try:
+        schema_validator.validate_v1_2_0(cert_json)
+        logging.debug('schema validates against v1.2 schema')
+    except Exception as e:
+        logging.error('Schema validation failed', e)
+        raise InvalidCertificateError('Schema validation failed', e)
 
     # check the proof before doing anything else
-    validate_receipt = utils.validate_proof(signed_local_json['receipt']['proof'],
-                        signed_local_json['receipt']['targetHash'],
-                        signed_local_json['receipt']['merkleRoot'], sha256)
+    validate_receipt = utils.validate_receipt(cert_json['receipt'])
 
     if not validate_receipt:
-        verify_response.append(('Verifying receipt', False))
-        verify_response.append(("Verified", False))
-        return verify_response
+        raise InvalidCertificateError('Certificate receipt is invalid')
+    logging.debug('Receipt is valid')
 
-    transaction_id = signed_local_json['receipt']['anchors'][0]['sourceId']
-    transaction_data = connector.lookup_tx(transaction_id)
-
-    if not transaction_data:
-        verify_response.append(('Looking up by transaction_id', False))
-        verify_response.append(("Verified", False))
-        return verify_response
-
-    verify_response.append(("Fetching hash in OP_RETURN field", "DONE"))
+    try:
+        transaction_id = cert_json['receipt']['anchors'][0]['sourceId']
+        transaction_data = connector.lookup_tx(transaction_id)
+        logging.debug('successfully looked up transaction data')
+    except Exception as e:
+        raise InvalidCertificateError('Failure looking up transaction', e)
 
     # compute local hash
-    local_hash = compute_v2_hash(signed_local_json['document'])
-    verify_response.append(("Computing SHA256 digest of local certificate", "DONE"))
+    try:
+        local_hash = compute_v2_hash(cert_json['document'])
+        logging.debug('computed local hash')
+    except Exception as e:
+        raise InvalidCertificateError('Error computing SHA256 digest of local certificate', e)
 
-    # compare local and remote hashes
-    target_hash = signed_local_json['receipt']['targetHash']
+
+    # compare local and receipt targetHash
+    target_hash = cert_json['receipt']['targetHash']
     compare_target_hash_result = compare_hashes(local_hash, target_hash)
-    verify_response.append(("Comparing local and blockchain hashes", compare_target_hash_result))
+    if not compare_target_hash_result:
+        # TODO: exception?
+        raise InvalidCertificateError('Local and target hash did not match')
+    logging.debug('local hash matched the targetHash in the receipt')
 
-    # check merkle root
-    merkle_root = signed_local_json['receipt']['merkleRoot']
+    # check merkle root against the value on the blockchain
+    merkle_root = cert_json['receipt']['merkleRoot']
     remote_hash = transaction_data.script
     compare_merkle_root_result = compare_hashes(merkle_root, remote_hash)
-    verify_response.append(("Comparing receipt merkle root with blockchain", compare_target_hash_result))
+    if not compare_merkle_root_result:
+        # TODO: exception?
+        raise InvalidCertificateError('The merkleRoot in the receipt did not match the value on the blockchain')
+    logging.debug('the receipt merkleRoot matched the value on the blockchain')
 
     # check author
-    signer_url = signed_local_json['document']['certificate']['issuer']['id']
-    uid = signed_local_json['document']['assertion']['uid']
-    signature = signed_local_json['document']['signature']
+    signer_url = cert_json['document']['certificate']['issuer']['id']
     keys = get_issuer_keys(signer_url)
+    uid = cert_json['document']['assertion']['uid']
+    signature = cert_json['document']['signature']
+
     signing_key = keys['issuer_key'][0]['key']
     revocation_address = keys['revocation_key'][0]['key']
 
     author_verified = check_issuer_signature(signing_key, uid, signature)
-    verify_response.append(("Checking signature", author_verified))
+    if not author_verified:
+        # TODO: exception?
+        raise InvalidCertificateError('Author signature check failed')
 
     # check if it's been revoked by the issuer
     revoked = revocation_address in transaction_data.revoked_addresses
-    verify_response.append(("Checking not revoked by issuer", not revoked))
+    if revoked:
+        raise InvalidCertificateError('Certificate has been revoked by the issuer')
 
-    verified = compare_target_hash_result and compare_merkle_root_result and author_verified and not revoked
-    verify_response.append(("Verified", verified))
-    return verify_response
+    logging.debug('All checks have passed; certificate is valid')
 
 
 def verify_v1_1(transaction_id, cert_file_bytes, chain=None):
@@ -181,7 +187,6 @@ def verify_v1_1(transaction_id, cert_file_bytes, chain=None):
 
 
 if __name__ == "__main__":
-
     with open('sample_data/1.2.0/sample_signed_cert-1.2.0.json') as cert_file:
         cert_json = json.load(cert_file)
         result = verify_v1_2(cert_json, 'testnet')

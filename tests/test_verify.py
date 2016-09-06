@@ -3,7 +3,7 @@ import unittest
 from cert_verifier import verify
 
 
-class TestUIHelpers(unittest.TestCase):
+class TestVerify(unittest.TestCase):
     def test_compute_v1_hash(self):
         input_bytes = u'this is a certificate'.encode(encoding='utf-8')
         res = verify.compute_v1_hash(input_bytes)

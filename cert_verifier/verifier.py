@@ -186,19 +186,24 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
     return verify_response
 
 
-def verify(cert_file, chain=None, transaction_id=None):
+def verify_cert_file(cert_file, chain=None, transaction_id=None):
     with open(cert_file, 'rb') as cert_fp:
         contents = cert_fp.read()
         cert_utf8 = contents.decode('utf-8')
-        cert_json = json.loads(cert_utf8)
-
-        if '@context' in cert_json:
-            result = verify_v1_2(cert_json, chain)
-        else:
-            if transaction_id is None:
-                raise Exception('v1 certificate is not accompanied with a transaction id')
-            result = verify_v1_1(contents, chain, transaction_id)
+        result = verify_cert_contents(cert_utf8, chain, transaction_id)
     return result
+
+
+def verify_cert_contents(cert_utf8, chain, transaction_id):
+    cert_json = json.loads(cert_utf8)
+    if '@context' in cert_json:
+        result = verify_v1_2(cert_json, chain)
+    else:
+        if transaction_id is None:
+            raise Exception('v1 certificate is not accompanied with a transaction id')
+        result = verify_v1_1(cert_utf8, chain, transaction_id)
+    return result
+
 
 if __name__ == "__main__":
     with open('../sample_data/1.2.0/sample_signed_cert-1.2.0.json') as cert_file:
@@ -210,9 +215,9 @@ if __name__ == "__main__":
         result = verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa',  'testnet')
         print(result)
 
-    result = verify('../sample_data/1.2.0/sample_signed_cert-1.2.0.json', 'testnet')
+    result = verify_cert_file('../sample_data/1.2.0/sample_signed_cert-1.2.0.json', 'testnet')
     print(result)
-    result = verify('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
+    result = verify_cert_file('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
     print(result)
 
 

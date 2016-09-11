@@ -11,24 +11,26 @@ The most common way to use this is to add the (latest cert-verifier pypi package
 
 ## Running the CLI locally
 
+1. Ensure you have an python environment. [Recommendations[(blockchain-certificates.github.io/docs/virtualenv.md)
+
 1. Git clone the repository and change to the directory
 
   ```bash
   git clone https://github.com/blockchain-certificates/cert-verifier.git && cd cert-verifier
   ```
 
-2. Ensure you have a active python interpreter.
-
-3. Run cert-viewer setup
+2. Run cert-viewer setup
 
   ```bash
   pip install .
   ```
 
-4. Run the main program
+3. Run the main program
 
-cd cert_verifier
-python verifier.py
+  ```bash
+  cd cert_verifier
+  python verifier.py
+  ```
 
 ## Unit tests
 

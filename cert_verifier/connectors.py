@@ -72,7 +72,7 @@ class BlockcypherConnector(TransactionLookupConnector):
         if chain == 'testnet':
             self.url = 'http://api.blockcypher.com/v1/btc/test3/txs/%s'
         elif chain == 'mainnet':
-            'https://api.blockcypher.com/v1/btc/main/txs/%s'
+            self.url = 'https://api.blockcypher.com/v1/btc/main/txs/%s'
         else:
             raise Exception(
                 'unsupported chain (%s) requested with blockcypher collector. Currently only testnet and mainnet are supported' % chain)

@@ -189,19 +189,19 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
 def verify_cert_file(cert_file, chain=None, transaction_id=None):
     with open(cert_file, 'rb') as cert_fp:
         contents = cert_fp.read()
-        cert_utf8 = contents.decode('utf-8')
-        result = verify_cert_contents(cert_utf8, chain, transaction_id)
+        result = verify_cert_contents(contents, chain, transaction_id)
     return result
 
 
-def verify_cert_contents(cert_utf8, chain, transaction_id):
+def verify_cert_contents(cert_bytes, chain, transaction_id):
+    cert_utf8 = cert_bytes.decode('utf-8')
     cert_json = json.loads(cert_utf8)
     if '@context' in cert_json:
         result = verify_v1_2(cert_json, chain)
     else:
         if transaction_id is None:
             raise Exception('v1 certificate is not accompanied with a transaction id')
-        result = verify_v1_1(cert_utf8, chain, transaction_id)
+        result = verify_v1_1(cert_bytes, chain, transaction_id)
     return result
 
 

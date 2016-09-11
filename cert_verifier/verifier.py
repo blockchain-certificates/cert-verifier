@@ -52,14 +52,18 @@ def compare_hashes(hash1, hash2):
 
 
 def get_issuer_keys(signer_url):
-    r = requests.get(signer_url)
-    remote_json = None
-    if r.status_code != 200:
-        logging.error('Error looking up issuer keys at url=%s, status_code=%d', signer_url, r.status_code)
-    else:
-        remote_json = r.json()
-        logging.info('Found issuer keys at url=%s', signer_url)
-    return remote_json
+    try:
+        r = requests.get(signer_url)
+        remote_json = None
+        if r.status_code != 200:
+            logging.error('Error looking up issuer keys at url=%s, status_code=%d', signer_url, r.status_code)
+        else:
+            remote_json = r.json()
+            logging.info('Found issuer keys at url=%s', signer_url)
+        return remote_json
+    except Exception as e:
+        logging.error('Error looking up issuer keys at url=%s', signer_url, e)
+        return None
 
 
 def verify_v1_2(cert_json, chain='mainnet'):
@@ -172,6 +176,10 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
     signature = cert_json['signature']
 
     keys = get_issuer_keys(signer_url)
+    if not keys:
+        verify_response.append(("Checking signature", False))
+        return verify_response
+
     signing_key = keys['issuer_key'][0]['key']
     revocation_address = keys['revocation_key'][0]['key']
     author_verified = check_issuer_signature(signing_key, uid, signature)

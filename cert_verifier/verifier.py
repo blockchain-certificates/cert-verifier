@@ -177,6 +177,7 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
 
     keys = get_issuer_keys(signer_url)
     if not keys:
+        # todo: change this
         verify_response.append(("Checking signature", False))
         return verify_response
 

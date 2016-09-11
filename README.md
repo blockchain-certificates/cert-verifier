@@ -6,7 +6,7 @@ Library for verifying blockchain certificates.
 
 ## Using the pypi package
 
-The most common way to use this is to add the (latest cert-verifier pypi package)[https://badge.fury.io/py/cert-verifier] to your project dependencies. 
+The most common way to use this is to add the [latest cert-verifier pypi package](https://badge.fury.io/py/cert-verifier) to your project dependencies. 
 
 
 ## Running the CLI locally

@@ -62,6 +62,7 @@ def get_issuer_keys(signer_url):
             logging.info('Found issuer keys at url=%s', signer_url)
         return remote_json
     except Exception as e:
+        # todo: fix logging format, not logging exception
         logging.error('Error looking up issuer keys at url=%s', signer_url, e)
         return None
 

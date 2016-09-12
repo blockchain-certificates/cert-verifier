@@ -11,7 +11,7 @@ The most common way to use this is to add the [latest cert-verifier pypi package
 
 ## Running the CLI locally
 
-1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/blockchain-certificates.github.io/blob/master/docs/virtualenv.md)
+1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/developer-common-docs/blob/master/virtualenv.md)
 
 1. Git clone the repository and change to the directory
 

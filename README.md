@@ -8,24 +8,23 @@ Library for verifying blockchain certificates.
 
 The most common way to use this is to add the [latest cert-verifier pypi package](https://badge.fury.io/py/cert-verifier) to your project dependencies. 
 
-
 ## Running the CLI locally
 
 1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/developer-common-docs/blob/master/virtualenv.md)
 
-1. Git clone the repository and change to the directory
+2. Git clone the repository and change to the directory
 
   ```bash
   git clone https://github.com/blockchain-certificates/cert-verifier.git && cd cert-verifier
   ```
 
-2. Run cert-viewer setup
+3. Run cert-viewer setup
 
   ```bash
   pip install .
   ```
 
-3. Run the main program
+4. Run the main program
 
   ```bash
   cd cert_verifier
@@ -36,9 +35,14 @@ The most common way to use this is to add the [latest cert-verifier pypi package
 
 This project uses tox to validate against several python environments.
 
-```shell
-# ensure your virtual python environment is activated (example)
-source ./venv/bin/activate
+1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/developer-common-docs/blob/master/virtualenv.md)
 
-# run tests
-./run-tests.sh
+2. Run tests
+    ```
+    ./run_tests.sh
+    ```
+
+
+## Contact
+
+Contact [certs@mit.edu](mailto:certs@mit.edu) with questions

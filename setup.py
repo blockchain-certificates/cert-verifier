@@ -20,7 +20,7 @@ setup(
     tests_require=['tox'],
     url='https://github.com/blockchain-certificates/cert-verifier',
     license='MIT',
-    author_email='certs@media.mit.edu',
+    author_email='certs@mit.edu',
     long_description=long_description,
     packages=find_packages(),
     install_requires=reqs

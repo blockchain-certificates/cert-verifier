@@ -100,22 +100,22 @@ class TestVerify(unittest.TestCase):
 
     # end-to-end tests
     def test_verify_v1_2(self):
-        with open('../sample_data/1.2.0/sample_signed_cert-1.2.0.json') as cert_file:
+        with open('../sample_data/1.2/sample_signed_cert-1.2.json') as cert_file:
             cert_json = json.load(cert_file)
             verifier.verify_v1_2(cert_json, 'testnet')
             self.assertTrue(True, 'this will not execute if test fails (will throw an exception)')
 
     def test_verify_v1_1(self):
-        with open('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', 'rb') as cert_file:
+        with open('../sample_data/1.1/sample_signed_cert-1.1.json', 'rb') as cert_file:
             result = verifier.verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
             self.assertEquals(result[-1][1], True)
 
     def test_verify_cert_file_v1_2(self):
-        result = verifier.verify_cert_file('../sample_data/1.2.0/sample_signed_cert-1.2.0.json', 'testnet')
+        result = verifier.verify_cert_file('../sample_data/1.2/sample_signed_cert-1.2.json', 'testnet')
         self.assertTrue(True, 'this will not execute if test fails (will throw an exception)')
 
     def test_verify_cert_file_v1_1(self):
-        result = verifier.verify_cert_file('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
+        result = verifier.verify_cert_file('../sample_data/1.1/sample_signed_cert-1.1.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
         self.assertEquals(result[-1][1], True)
 
 

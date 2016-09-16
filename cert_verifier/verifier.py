@@ -74,7 +74,7 @@ def verify_v1_2(cert_json, chain='mainnet'):
 
     # first ensure this is a valid v1.2 cert
     try:
-        schema_validator.validate_v1_2_0(cert_json)
+        schema_validator.validate_v1_2(cert_json)
         logging.debug('schema validates against v1.2 schema')
     except Exception as e:
         logging.error('Schema validation failed', e)
@@ -150,7 +150,7 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
     cert_json = json.loads(cert_utf8)
 
     # first ensure this is a valid v1.1 cert
-    schema_validator.validate_v1_1_0(cert_json)
+    schema_validator.validate_v1_1(cert_json)
 
     verify_response = []
 
@@ -216,18 +216,19 @@ def verify_cert_contents(cert_bytes, chain, transaction_id):
 
 
 if __name__ == "__main__":
-    with open('../sample_data/1.2.0/sample_signed_cert-1.2.0.json') as cert_file:
+
+    with open('../sample_data/1.1/sample_signed_cert-1.1.json', 'rb') as cert_file:
+        result = verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa',  'testnet')
+        print(result)
+
+    with open('../sample_data/1.2/sample_signed_cert-1.2.json') as cert_file:
         cert_json = json.load(cert_file)
         result = verify_v1_2(cert_json, 'testnet')
         print(result)
 
-    with open('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', 'rb') as cert_file:
-        result = verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa',  'testnet')
-        print(result)
-
-    result = verify_cert_file('../sample_data/1.2.0/sample_signed_cert-1.2.0.json', 'testnet')
+    result = verify_cert_file('../sample_data/1.2/sample_signed_cert-1.2.json', 'testnet')
     print(result)
-    result = verify_cert_file('../sample_data/1.1.0/sample_signed_cert-1.1.0.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
+    result = verify_cert_file('../sample_data/1.1/sample_signed_cert-1.1.json', '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa', 'testnet')
     print(result)
 
 

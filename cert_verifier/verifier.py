@@ -25,8 +25,6 @@ if sys.version > '3':
     hexlify = lambda b: binascii.hexlify(b).decode('utf8')
 
 
-
-
 def check_issuer_signature(signing_key, uid, signature):
     if signing_key is None or uid is None or signature is None:
         return False
@@ -72,7 +70,7 @@ def verify_v1_2(cert_json, chain='mainnet'):
     if chain == 'testnet':
         bitcoin.SelectParams(chain)
 
-    # first ensure this is a valid v1.2 cert
+    # first ensure this is a valid v1.2 cert.
     try:
         schema_validator.validate_v1_2(cert_json)
         logging.debug('schema validates against v1.2 schema')
@@ -125,8 +123,8 @@ def verify_v1_2(cert_json, chain='mainnet'):
     uid = cert_json['document']['assertion']['uid']
     signature = cert_json['document']['signature']
 
-    signing_key = keys['issuer_key'][0]['key']
-    revocation_address = keys['revocation_key'][0]['key']
+    signing_key = keys['issuerKeys'][0]['key']
+    revocation_address = keys['revocationKeys'][0]['key']
 
     author_verified = check_issuer_signature(signing_key, uid, signature)
     if not author_verified:
@@ -182,8 +180,8 @@ def verify_v1_1(cert_file_bytes, transaction_id, chain='mainnet'):
         verify_response.append(("Checking signature", False))
         return verify_response
 
-    signing_key = keys['issuer_key'][0]['key']
-    revocation_address = keys['revocation_key'][0]['key']
+    signing_key = keys['issuerKeys'][0]['key']
+    revocation_address = keys['revocationKeys'][0]['key']
     author_verified = check_issuer_signature(signing_key, uid, signature)
     verify_response.append(("Checking signature", author_verified))
 

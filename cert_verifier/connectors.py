@@ -7,9 +7,10 @@ import logging
 import requests
 
 from cert_verifier.errors import *
+from cert_verifier import Chain
 
 
-def createTransactionLookupConnector(chain='mainnet'):
+def createTransactionLookupConnector(chain=Chain.mainnet):
     """
     Use Blockcypher by default for now
     :param chain: which chain, supported values are testnet and mainnet
@@ -38,8 +39,8 @@ class BlockchainInfoConnector(TransactionLookupConnector):
     connector.
     """
 
-    def __init__(self, chain='mainnet'):
-        if chain != 'mainnet':
+    def __init__(self, chain=Chain.mainnet):
+        if chain != Chain.mainnet:
             raise Exception('only mainnet chain is supported with blockchain.info collector')
         self.url = 'https://blockchain.info/rawtx/%s?cors=true'
 
@@ -69,9 +70,9 @@ class BlockcypherConnector(TransactionLookupConnector):
     """
 
     def __init__(self, chain):
-        if chain == 'testnet':
+        if chain == Chain.testnet:
             self.url = 'http://api.blockcypher.com/v1/btc/test3/txs/%s'
-        elif chain == 'mainnet':
+        elif chain == Chain.mainnet:
             self.url = 'https://api.blockcypher.com/v1/btc/main/txs/%s'
         else:
             raise Exception(

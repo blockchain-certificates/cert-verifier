@@ -14,13 +14,13 @@ with open(os.path.join(here, 'README.md')) as fp:
 
 setup(
     name='cert-verifier',
-    version='1.2.5',
+    version='1.2.8',
     description='verifies blockchain certificates',
     author='MIT Media Lab Blockchain Certificates',
     tests_require=['tox'],
     url='https://github.com/blockchain-certificates/cert-verifier',
     license='MIT',
-    author_email='certs@mit.edu',
+    author_email='info@blockcerts.org',
     long_description=long_description,
     packages=find_packages(),
     install_requires=reqs

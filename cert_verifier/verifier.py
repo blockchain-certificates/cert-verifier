@@ -159,6 +159,14 @@ class CheckNotRevoked(ValidationStep):
         return not revoked
 
 
+class CheckRecipientNotRevoked(ValidationStep):
+    def do_execute(self, state):
+        if 'revocationKey' in state.certificate_json['recipient']:
+            revoked = state.certificate_json['recipient']['revocationKey'] in state.revoked_addresses
+            return not revoked
+        return True
+
+
 class ComputeHashV2(ValidationStep):
     def do_execute(self, state):
         normalized = jsonld.normalize(state.certificate_json['document'],
@@ -193,7 +201,7 @@ class CompareHashesV2(ValidationStep):
 def verify_v1_2(certificate_json):
     state = ProcessingStateV2(certificate_json)
 
-    chain = parse_chain_from_address(certificate_json['document']['recipient']['pubkey'])
+    chain = parse_chain_from_address(certificate_json['document']['recipient']['publicKey'])
     connector = createTransactionLookupConnector(chain)
     bitcoin.SelectParams(chain.name)
 
@@ -204,7 +212,7 @@ def verify_v1_2(certificate_json):
                                         name='Fetch Bitcoin Transaction', success_status=StepStatus.done)
     compare_certificate_hash = ValidationGroup(steps=[CompareHashesV2()], name='Comparing local and merkle hashes')
     check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()], name='Checking issuer signature')
-    check_revoked = ValidationGroup(steps=[CheckNotRevoked()], name='Checking not revoked by issuer')
+    check_revoked = ValidationGroup(steps=[CheckNotRevoked(), CheckRecipientNotRevoked()], name='Checking not revoked by issuer')
 
     steps = [validate_receipt, compute_hash, fetch_transaction, compare_certificate_hash,
              check_signature, check_revoked]

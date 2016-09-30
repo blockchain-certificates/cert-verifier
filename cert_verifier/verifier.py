@@ -199,10 +199,10 @@ class CompareHashesV2(ValidationStep):
 
 
 def verify_v1_2(certificate_json):
-
-    valid = schema_validator.validate_v1_2(certificate_json)
-    if not valid:
-        raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema')
+    # removing this check until we have caching for the schemas
+    #valid = schema_validator.validate_v1_2(certificate_json)
+    #if not valid:
+    #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema')
     state = ProcessingStateV2(certificate_json['document'], certificate_json['receipt'])
 
     chain = parse_chain_from_address(certificate_json['document']['recipient']['publicKey'])

@@ -39,8 +39,9 @@ class ProcessingStateV1(ProcessingState):
 
 
 class ProcessingStateV2(ProcessingState):
-    def __init__(self, certificate_json):
+    def __init__(self, certificate_json, receipt):
         self.certificate_json = certificate_json
+        self.receipt = receipt
 
 
 class ValidationStep(object):
@@ -169,7 +170,7 @@ class CheckRecipientNotRevoked(ValidationStep):
 
 class ComputeHashV2(ValidationStep):
     def do_execute(self, state):
-        normalized = jsonld.normalize(state.certificate_json['document'],
+        normalized = jsonld.normalize(state.certificate_json,
                                       {'algorithm': 'URDNA2015', 'format': 'application/nquads'})
         hashed = sha256(normalized)
         state.local_hash = hashed
@@ -178,20 +179,19 @@ class ComputeHashV2(ValidationStep):
 
 class ValidateReceipt(ValidationStep):
     def do_execute(self, state):
-        receipt = state.certificate_json['receipt']
-        return utils.validate_receipt(receipt)
+        return utils.validate_receipt(state.receipt)
 
 
 class LookupTransactionId(ValidationStep):
     def do_execute(self, state):
-        state.transaction_id = state.certificate_json['receipt']['anchors'][0]['sourceId']
+        state.transaction_id = state.receipt['anchors'][0]['sourceId']
         return True
 
 
 class CompareHashesV2(ValidationStep):
     def do_execute(self, state):
-        expected_certificate_hash = state.certificate_json['receipt']['targetHash']
-        merkle_root = state.certificate_json['receipt']['merkleRoot']
+        expected_certificate_hash = state.receipt['targetHash']
+        merkle_root = state.receipt['merkleRoot']
 
         cert_hashes_match = hashes_match(state.local_hash, expected_certificate_hash)
         merkle_root_matches = hashes_match(state.blockchain_hash, merkle_root)
@@ -199,7 +199,11 @@ class CompareHashesV2(ValidationStep):
 
 
 def verify_v1_2(certificate_json):
-    state = ProcessingStateV2(certificate_json)
+
+    valid = schema_validator.validate_v1_2(certificate_json)
+    if not valid:
+        raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema')
+    state = ProcessingStateV2(certificate_json['document'], certificate_json['receipt'])
 
     chain = parse_chain_from_address(certificate_json['document']['recipient']['publicKey'])
     connector = createTransactionLookupConnector(chain)

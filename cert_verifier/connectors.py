@@ -1,6 +1,8 @@
 """
 Connectors supporting Bitcoin transaction lookups. This is used in the Blockchain Certificates project
 (http://www.blockcerts.org/) for validating certificates on the blockchain.
+
+TODO: hammer this with unit tests!
 """
 import logging
 
@@ -12,11 +14,11 @@ from cert_verifier import Chain
 
 def createTransactionLookupConnector(chain=Chain.mainnet):
     """
-    Use Blockcypher by default for now
+    Use BlockrIoConnector by default for now
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    return BlockcypherConnector(chain)
+    return BlockrIoConnector(chain)
 
 
 class TransactionLookupConnector:
@@ -87,8 +89,41 @@ class BlockcypherConnector(TransactionLookupConnector):
             revoked = set()
             script = None
             for o in r.json()['outputs']:
-                if int(o.get('value', 1)) == 0:
+                if float(o.get('value', 1)) == 0:
                     script = o['script']
+                else:
+                    if o.get('spent_by'):
+                        revoked.add(o.get('addresses')[0])
+            if not script:
+                raise InvalidTransactionError('transaction with transaction_id=%s is missing op_return script' % txid)
+            return TransactionData(revoked, script)
+
+
+class BlockrIoConnector(TransactionLookupConnector):
+    """
+    Lookup blockchain transactions using blockr.io api. Currently the 'mainnet' and 'testnet' chains are supported in
+    this connector.
+    """
+    def __init__(self, chain):
+        if chain == Chain.testnet:
+            self.url = 'http://tbtc.blockr.io/api/v1/tx/raw/%s'
+        elif chain == Chain.mainnet:
+            self.url = 'http://btc.blockr.io/api/v1/tx/raw/%s'
+        else:
+            raise Exception(
+                'unsupported chain (%s) requested with blockcypher collector. Currently only testnet and mainnet are supported' % chain)
+
+    def lookup_tx(self, txid):
+        r = requests.get(self.url % txid)
+        if r.status_code != 200:
+            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
+            raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
+        else:
+            revoked = set()
+            script = None
+            for o in r.json()['data']['tx']['vout']:
+                if float(o.get('value', 1)) == 0:
+                    script = o['scriptPubKey']['asm'].split(' ')[1]
                 else:
                     if o.get('spent_by'):
                         revoked.add(o.get('addresses')[0])

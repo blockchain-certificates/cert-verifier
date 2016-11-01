@@ -8,3 +8,5 @@ cert-schema>=1.2.20
 merkle-proofs>=0.0.6
 pyld>=0.7.1
 enum34>=1.1.6
+python-dateutil>=2.5.3
+pytz>=2016.7

@@ -4,11 +4,14 @@ Verify blockchain certificates (http://www.blockcerts.org/)
 import hashlib
 import json
 import logging
+from datetime import datetime
 
 import bitcoin
+import pytz
 import requests
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
 from cert_schema.schema_tools import schema_validator
+from dateutil.parser import parse
 from merkleproof import utils
 from merkleproof.MerkleTree import sha256
 from pyld import jsonld
@@ -198,6 +201,21 @@ class CompareHashesV2(ValidationStep):
         return cert_hashes_match and merkle_root_matches
 
 
+class CheckNotExpired(ValidationStep):
+    def do_execute(self, state):
+        if not 'expires' in state.certificate_json['assertion']:
+            return True
+        expires = state.certificate_json['assertion']['expires']
+        expires_date = parse(expires)
+
+        # compare to current time. If expires_date is timezone naive, assume UTC
+        utc = pytz.UTC
+        now_tz = utc.localize(datetime.utcnow())
+        if expires_date.tzinfo is None or expires_date.tzinfo.utcoffset(expires_date) is None:
+            expires_date = utc.localize(expires_date)
+        return now_tz < expires_date
+
+
 def verify_v1_2(certificate_json):
     # removing this check until we have caching for the schemas
     #valid = schema_validator.validate_v1_2(certificate_json)
@@ -215,11 +233,14 @@ def verify_v1_2(certificate_json):
     fetch_transaction = ValidationGroup(steps=[LookupTransactionId(), FetchTransaction(connector)],
                                         name='Fetch Bitcoin Transaction', success_status=StepStatus.done)
     compare_certificate_hash = ValidationGroup(steps=[CompareHashesV2()], name='Comparing local and merkle hashes')
-    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()], name='Checking issuer signature')
-    check_revoked = ValidationGroup(steps=[CheckNotRevoked(), CheckRecipientNotRevoked()], name='Checking not revoked by issuer')
+    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()],
+                                      name='Checking issuer signature')
+    check_not_revoked = ValidationGroup(steps=[CheckNotRevoked(), CheckRecipientNotRevoked()],
+                                        name='Checking not revoked by issuer')
+    check_not_expired = ValidationGroup(steps=[CheckNotExpired()], name='Checking certificate has not expired')
 
     steps = [validate_receipt, compute_hash, fetch_transaction, compare_certificate_hash,
-             check_signature, check_revoked]
+             check_signature, check_not_revoked, check_not_expired]
     all_steps = ValidationGroup(steps=steps, name='Validation')
 
     # first ensure this is a valid v1.2 cert.
@@ -262,7 +283,8 @@ def verify_v1_1(cert_file_bytes, transaction_id):
     fetch_transaction = ValidationGroup(steps=[FetchTransaction(connector)], name='Fetch Bitcoin Transaction',
                                         success_status=StepStatus.done)
     compare_hash = ValidationGroup(steps=[CompareHashesV1()], name='Comparing local and blockchain hashes')
-    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()], name='Checking issuer signature')
+    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()],
+                                      name='Checking issuer signature')
     check_revoked = ValidationGroup(steps=[CheckNotRevoked()], name='Checking not revoked by issuer')
 
     steps = [compute_hash, fetch_transaction, compare_hash, check_signature, check_revoked]
@@ -297,17 +319,22 @@ def verify_cert_contents(cert_bytes, transaction_id=None):
 
 
 if __name__ == "__main__":
-    with open('../sample_data/1.1/sample_signed_cert-1.1.json', 'rb') as cert_file:
+    with open('../tests/data/1.1/sample_signed_cert-1.1.json', 'rb') as cert_file:
         result = verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
         print(result)
 
-    with open('../sample_data/1.2/sample_signed_cert-1.2.json') as cert_file:
+    with open('../tests/data/1.2/sample_signed_cert-1.2.json') as cert_file:
         cert_json = json.load(cert_file)
         result = verify_v1_2(cert_json)
         print(result)
 
-    result = verify_cert_file('../sample_data/1.2/sample_signed_cert-1.2.json')
+    result = verify_cert_file('../tests/data/1.2/sample_signed_cert-1.2.json')
     print(result)
-    result = verify_cert_file('../sample_data/1.1/sample_signed_cert-1.1.json',
+    result = verify_cert_file('../tests/data/1.1/sample_signed_cert-1.1.json',
                               '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
     print(result)
+
+    with open('../tests/data/1.2/blockchain_certificates/609c2989-275f-4f4c-ab02-b245cfb09017.json') as cert_file:
+        cert_json = json.load(cert_file)
+        result = verify_v1_2(cert_json)
+        print(result)

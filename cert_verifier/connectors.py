@@ -1,15 +1,13 @@
 """
 Connectors supporting Bitcoin transaction lookups. This is used in the Blockchain Certificates project
 (http://www.blockcerts.org/) for validating certificates on the blockchain.
-
-TODO: hammer this with unit tests!
 """
 import logging
 
 import requests
 
-from cert_verifier.errors import *
 from cert_verifier import Chain
+from cert_verifier.errors import *
 
 
 def createTransactionLookupConnector(chain=Chain.mainnet):
@@ -18,7 +16,7 @@ def createTransactionLookupConnector(chain=Chain.mainnet):
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    return BlockrIoConnector(chain)
+    return BlockcypherConnector(chain)
 
 
 class TransactionLookupConnector:
@@ -26,10 +24,24 @@ class TransactionLookupConnector:
     Abstract connector for looking up transactions
     """
 
+    def __init__(self):
+        self.url = None
+
     def lookup_tx(self, txid):
+        json_response = self.fetch_tx(txid)
+        return self.parse_tx(json_response)
+
+    def fetch_tx(self, txid):
+        r = requests.get(self.url % txid)
+        if r.status_code != 200:
+            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
+            raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
+        return r.json()
+
+    def parse_tx(self, json_response):
         """
-        Abstract method for looking up a transaction by transaction id
-        :param txid: transaction id
+        Abstract method for parsing json response
+        :param json_response: json returned by transaction connector
         :return: TransactionData
         """
         return None
@@ -46,23 +58,19 @@ class BlockchainInfoConnector(TransactionLookupConnector):
             raise Exception('only mainnet chain is supported with blockchain.info collector')
         self.url = 'https://blockchain.info/rawtx/%s?cors=true'
 
-    def lookup_tx(self, txid):
-        r = requests.get(self.url % txid)
-        if r.status_code != 200:
-            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
-            raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
-        else:
-            revoked = set()
-            script = None
-            for o in r.json()['outs']:
-                if int(o.get('value', 1)) == 0:
-                    script = o['script']
-                else:
-                    if o.get('spent'):
-                        revoked.add(o.get('addr'))
-            if not script:
-                raise InvalidTransactionError('transaction with transaction_id=%s is missing op_return script' % txid)
-            return TransactionData(revoked, script)
+    def parse_tx(self, json_response):
+        revoked = set()
+        script = None
+        for o in json_response['out']:
+            if int(o.get('value', 1)) == 0:
+                script = o['script'][4:]
+            else:
+                if o.get('spent'):
+                    revoked.add(o.get('addr'))
+        if not script:
+            logging.error('transaction response is missing op_return script: %s', json_response)
+            raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
+        return TransactionData(revoked, script)
 
 
 class BlockcypherConnector(TransactionLookupConnector):
@@ -80,56 +88,19 @@ class BlockcypherConnector(TransactionLookupConnector):
             raise Exception(
                 'unsupported chain (%s) requested with blockcypher collector. Currently only testnet and mainnet are supported' % chain)
 
-    def lookup_tx(self, txid):
-        r = requests.get(self.url % txid)
-        if r.status_code != 200:
-            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
-            raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
-        else:
-            revoked = set()
-            script = None
-            for o in r.json()['outputs']:
-                if float(o.get('value', 1)) == 0:
-                    script = o['script']
-                else:
-                    if o.get('spent_by'):
-                        revoked.add(o.get('addresses')[0])
-            if not script:
-                raise InvalidTransactionError('transaction with transaction_id=%s is missing op_return script' % txid)
-            return TransactionData(revoked, script)
-
-
-class BlockrIoConnector(TransactionLookupConnector):
-    """
-    Lookup blockchain transactions using blockr.io api. Currently the 'mainnet' and 'testnet' chains are supported in
-    this connector.
-    """
-    def __init__(self, chain):
-        if chain == Chain.testnet:
-            self.url = 'http://tbtc.blockr.io/api/v1/tx/raw/%s'
-        elif chain == Chain.mainnet:
-            self.url = 'http://btc.blockr.io/api/v1/tx/raw/%s'
-        else:
-            raise Exception(
-                'unsupported chain (%s) requested with blockcypher collector. Currently only testnet and mainnet are supported' % chain)
-
-    def lookup_tx(self, txid):
-        r = requests.get(self.url % txid)
-        if r.status_code != 200:
-            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
-            raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
-        else:
-            revoked = set()
-            script = None
-            for o in r.json()['data']['tx']['vout']:
-                if float(o.get('value', 1)) == 0:
-                    script = o['scriptPubKey']['asm'].split(' ')[1]
-                else:
-                    if o.get('spent_by'):
-                        revoked.add(o.get('addresses')[0])
-            if not script:
-                raise InvalidTransactionError('transaction with transaction_id=%s is missing op_return script' % txid)
-            return TransactionData(revoked, script)
+    def parse_tx(self, json_response):
+        revoked = set()
+        script = None
+        for o in json_response['outputs']:
+            if float(o.get('value', 1)) == 0:
+                script = o['data_hex']
+            else:
+                if o.get('spent_by'):
+                    revoked.add(o.get('addresses')[0])
+        if not script:
+            logging.error('transaction response is missing op_return script: %s', json_response)
+            raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
+        return TransactionData(revoked, script)
 
 
 class TransactionData:

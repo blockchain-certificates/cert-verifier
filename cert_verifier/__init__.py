@@ -7,7 +7,6 @@ from enum import Enum
 
 from cert_verifier.errors import *
 
-
 unhexlify = binascii.unhexlify
 hexlify = binascii.hexlify
 if sys.version > '3':

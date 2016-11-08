@@ -215,12 +215,19 @@ class CheckNotExpired(ValidationStep):
             expires_date = utc.localize(expires_date)
         return now_tz < expires_date
 
+def verify_json(certificate_json):
+    # Right now we only have 1 expected version.
+    return verify_v1_2(certificate_json)
 
 def verify_v1_2(certificate_json):
     # removing this check until we have caching for the schemas
-    #valid = schema_validator.validate_v1_2(certificate_json)
-    #if not valid:
-    #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema')
+    #try:
+    #    schema_validator.validate_v1_2(certificate_json)
+    #    logging.debug('The schema validates against v1.2 schema')
+    #except Exception as e:
+    #    logging.error('The certificate did not comply with the Blockchain Certificate schema', e)
+    #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema', e)
+
     state = ProcessingStateV2(certificate_json['document'], certificate_json['receipt'])
 
     chain = parse_chain_from_address(certificate_json['document']['recipient']['publicKey'])
@@ -243,15 +250,7 @@ def verify_v1_2(certificate_json):
              check_signature, check_not_revoked, check_not_expired]
     all_steps = ValidationGroup(steps=steps, name='Validation')
 
-    # first ensure this is a valid v1.2 cert.
-    try:
-        schema_validator.validate_v1_2(certificate_json)
-        logging.debug('schema validates against v1.2 schema')
-    except Exception as e:
-        logging.error('Schema validation failed', e)
-        raise InvalidCertificateError('Schema validation failed', e)
-
-    result = all_steps.execute(state)
+    all_steps.execute(state)
     messages = []
     all_steps.add_detailed_status(messages)
     for message in messages:
@@ -310,7 +309,7 @@ def verify_cert_contents(cert_bytes, transaction_id=None):
     cert_utf8 = cert_bytes.decode('utf-8')
     cert_json = json.loads(cert_utf8)
     if '@context' in cert_json:
-        result = verify_v1_2(cert_json)
+        result = verify_json(cert_json)
     else:
         if transaction_id is None:
             raise Exception('v1 certificate is not accompanied with a transaction id')

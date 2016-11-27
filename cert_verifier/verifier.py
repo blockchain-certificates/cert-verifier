@@ -19,6 +19,21 @@ from pyld import jsonld
 from cert_verifier import parse_chain_from_address, StepStatus
 from cert_verifier.connectors import BlockcypherConnector, createTransactionLookupConnector
 from cert_verifier.errors import *
+from cert_schema import jsonld_document_loader
+from werkzeug.contrib.cache import SimpleCache
+
+
+cache = SimpleCache()
+
+
+def cached_document_loader(url, override_cache=False):
+    if not override_cache:
+        result = cache.get(url)
+        if result:
+            return result
+    doc = jsonld_document_loader(url)
+    cache.set(url, doc)
+    return doc
 
 
 def hashes_match(actual_hash, expected_hash):
@@ -173,8 +188,8 @@ class CheckRecipientNotRevoked(ValidationStep):
 
 class ComputeHashV2(ValidationStep):
     def do_execute(self, state):
-        normalized = jsonld.normalize(state.certificate_json,
-                                      {'algorithm': 'URDNA2015', 'format': 'application/nquads'})
+        options = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
+        normalized = jsonld.normalize(state.certificate_json, options=options)
         hashed = sha256(normalized)
         state.local_hash = hashed
         return True
@@ -333,7 +348,7 @@ if __name__ == "__main__":
                               '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
     print(result)
 
-    with open('../tests/data/1.2/blockchain_certificates/609c2989-275f-4f4c-ab02-b245cfb09017.json') as cert_file:
+    with open('../tests/data/1.2/609c2989-275f-4f4c-ab02-b245cfb09017.json') as cert_file:
         cert_json = json.load(cert_file)
         result = verify_v1_2(cert_json)
         print(result)

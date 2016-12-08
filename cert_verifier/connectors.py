@@ -81,9 +81,9 @@ class BlockcypherConnector(TransactionLookupConnector):
 
     def __init__(self, chain):
         if chain == Chain.testnet:
-            self.url = 'http://api.blockcypher.com/v1/btc/test3/txs/%s'
+            self.url = 'http://api.blockcypher.com/v1/btc/test3/txs/%s?limit=100'
         elif chain == Chain.mainnet:
-            self.url = 'https://api.blockcypher.com/v1/btc/main/txs/%s'
+            self.url = 'https://api.blockcypher.com/v1/btc/main/txs/%s?limit=100'
         else:
             raise Exception(
                 'unsupported chain (%s) requested with blockcypher collector. Currently only testnet and mainnet are supported' % chain)

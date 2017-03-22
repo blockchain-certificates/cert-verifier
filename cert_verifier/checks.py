@@ -105,14 +105,13 @@ class IntegrityCheckerV1_2(VerificationCheck):
 
     def do_execute(self):
         cp = Chainpoint()
-        cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
+        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
 
         local_hash = compute_jsonld_hash(self.certificate.certificate_json['document'])
-
         cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
         merkle_root_matches = hashes_match(self.transaction_info.op_return,
                                            self.certificate.blockcert_signature.proof.merkle_root)
-        return cert_hashes_match and merkle_root_matches
+        return valid_receipt and cert_hashes_match and merkle_root_matches
 
 
 class IntegrityCheckerV2(VerificationCheck):
@@ -121,14 +120,14 @@ class IntegrityCheckerV2(VerificationCheck):
 
     def do_execute(self):
         cp = Chainpoint()
-        cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
+        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
 
         local_hash = compute_jsonld_hash(self.certificate.certificate_json)
 
         cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
         merkle_root_matches = hashes_match(self.transaction_info.op_return,
                                            self.certificate.blockcert_signature.proof.merkle_root)
-        return cert_hashes_match and merkle_root_matches
+        return valid_receipt and cert_hashes_match and merkle_root_matches
 
 
 class RevocationChecker(VerificationCheck):

@@ -5,9 +5,11 @@ mkdocs>=0.15.3
 python-bitcoinlib>=0.5.0
 requests>=2.11.0
 cert-schema>=1.2.21
-merkle-proofs>=0.0.6
 pyld>=0.7.1
 enum34>=1.1.6
 python-dateutil>=2.5.3
 pytz>=2016.7
 werkzeug>=0.11.11
+cert-core>=0.0.6
+functional>=0.4
+chainpoint==0.0.2

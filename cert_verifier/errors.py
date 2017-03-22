@@ -13,7 +13,3 @@ class InvalidConnectorError(Error):
 
 class InvalidCertificateError(Error):
     pass
-
-
-class UnrecognizedChainError(Error):
-    pass

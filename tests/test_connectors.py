@@ -51,7 +51,7 @@ class TestConnectors(unittest.TestCase):
             trx_json = json.load(trx_file)
             connector = BlockchainInfoConnector(chain=Chain.mainnet)
             data = connector.parse_tx(trx_json)
-            self.assertEquals(data.script, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
+            self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(0, len(data.revoked_addresses))
 
     def test_blockchain_info_parsing_revoked(self):
@@ -59,7 +59,7 @@ class TestConnectors(unittest.TestCase):
             trx_json = json.load(trx_file)
             connector = BlockchainInfoConnector(chain=Chain.mainnet)
             data = connector.parse_tx(trx_json)
-            self.assertEquals(data.script, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
+            self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(1, len(data.revoked_addresses))
             self.assertTrue('1AAGG6jirbu9XwikFpkHokbbiYpjVtFe1G' in data.revoked_addresses)
 
@@ -68,7 +68,7 @@ class TestConnectors(unittest.TestCase):
             trx_json = json.load(trx_file)
             connector = BlockcypherConnector(chain=Chain.mainnet)
             data = connector.parse_tx(trx_json)
-            self.assertEquals(data.script, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
+            self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(0, len(data.revoked_addresses))
 
     def test_blockcypher_parsing_revoked(self):
@@ -76,6 +76,6 @@ class TestConnectors(unittest.TestCase):
             trx_json = json.load(trx_file)
             connector = BlockcypherConnector(chain=Chain.mainnet)
             data = connector.parse_tx(trx_json)
-            self.assertEquals(data.script, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
+            self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(1, len(data.revoked_addresses))
             self.assertTrue('1AAGG6jirbu9XwikFpkHokbbiYpjVtFe1G' in data.revoked_addresses)

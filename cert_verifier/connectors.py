@@ -6,7 +6,8 @@ import logging
 
 import requests
 
-from cert_verifier import Chain
+from cert_core import Chain
+from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
 
@@ -16,7 +17,7 @@ def createTransactionLookupConnector(chain=Chain.mainnet):
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    return BlockcypherConnector(chain)
+    return BlockrIOConnector(chain)
 
 
 class TransactionLookupConnector:
@@ -73,6 +74,33 @@ class BlockchainInfoConnector(TransactionLookupConnector):
         return TransactionData(revoked, script)
 
 
+class BlockrIOConnector(TransactionLookupConnector):
+    def __init__(self, chain):
+        if chain == Chain.testnet:
+            self.url = 'https://tbtc.blockr.io/api/v1/tx/info/%s'
+        elif chain == Chain.mainnet:
+            self.url = 'https://btc.blockr.io/api/v1/tx/info/%s'
+        else:
+            raise Exception(
+                'unsupported chain (%s) requested with BlockrIO collector. Currently only testnet and mainnet are supported' % chain)
+
+
+    def parse_tx(self, json_response):
+        revoked = set()
+        script = None
+        for o in json_response['data']['vouts']:
+            if float(o.get('amount', 1)) == 0:
+                script = o['extras']['script'][4:]
+            else:
+                if o.get('is_spent') and float(o.get('is_spent', 1)) == 49:
+                    revoked.add(o.get('address'))
+        if not script:
+            logging.error('transaction response is missing op_return script: %s', json_response)
+            raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
+        return TransactionData(revoked, script)
+
+
+
 class BlockcypherConnector(TransactionLookupConnector):
     """
     Lookup blockchain transactions using blockcypher api. Currently the 'mainnet' and 'testnet' chains are supported in
@@ -102,15 +130,3 @@ class BlockcypherConnector(TransactionLookupConnector):
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
         return TransactionData(revoked, script)
 
-
-class TransactionData:
-    """
-    If the blockchain transaction was found, this will be populated with the op_return script, and a set of revoked
-    addresses. These are the key parts of the transaction lookup that we need in validation.
-
-    TransactionLookupConnector implementations return this object to shield the caller from api-specific json parsing.
-    """
-
-    def __init__(self, revoked_addresses, op_return_script):
-        self.revoked_addresses = revoked_addresses
-        self.script = op_return_script

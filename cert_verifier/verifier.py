@@ -1,280 +1,93 @@
 """
 Verify blockchain certificates (http://www.blockcerts.org/)
 """
-import hashlib
-import json
-import logging
-from datetime import datetime
 
-import bitcoin
-import pytz
 import requests
-from bitcoin.signmessage import BitcoinMessage, VerifyMessage
-from cert_schema.schema_tools import schema_validator
-from dateutil.parser import parse
-from merkleproof import utils
-from merkleproof.MerkleTree import sha256
-from pyld import jsonld
+from cert_core import BlockcertVersion
+from cert_core import model
 
-from cert_verifier import parse_chain_from_address, StepStatus
-from cert_verifier.connectors import BlockcypherConnector, createTransactionLookupConnector
-from cert_verifier.errors import *
-from cert_schema import jsonld_document_loader
-from werkzeug.contrib.cache import SimpleCache
-
+from cert_verifier.checks import *
+from cert_verifier.connectors import createTransactionLookupConnector
 
 cache = SimpleCache()
+lock = Lock()
 
 
-def cached_document_loader(url, override_cache=False):
-    if not override_cache:
-        result = cache.get(url)
-        if result:
-            return result
-    doc = jsonld_document_loader(url)
-    cache.set(url, doc)
-    return doc
+class IssuerInfoV1x(object):
+    def __init__(self, issuer_json):
+        # TODO: need timerange from cert
+        self.signing_key = issuer_json['issuerKeys'][0]['key']
+        self.revocation_address = issuer_json['revocationKeys'][0]['key']
 
 
-def hashes_match(actual_hash, expected_hash):
-    return actual_hash in expected_hash or actual_hash == expected_hash
+def get_issuer_info(issuer_url):
+    r = requests.get(issuer_url)
+    if r.status_code != 200:
+        logging.error('Error looking up issuer keys at url=%s, status_code=%d', issuer_url, r.status_code)
+    else:
+        remote_json = r.json()
+        logging.debug('Found issuer keys at url=%s', issuer_url)
+
+        return IssuerInfoV1x(remote_json)
+    return None
 
 
-class ProcessingState:
-    def __init__(self):
-        self.certificate_json = None
-        self.transaction_id = None
-        self.local_hash = None
-        self.blockchain_hash = None
-
-
-class ProcessingStateV1(ProcessingState):
-    def __init__(self, certificate_bytes, transaction_id):
-        self.certificate_bytes = certificate_bytes
-        self.transaction_id = transaction_id
-        cert_utf8 = certificate_bytes.decode('utf-8')
-        self.certificate_json = json.loads(cert_utf8)
-
-
-class ProcessingStateV2(ProcessingState):
-    def __init__(self, certificate_json, receipt):
-        self.certificate_json = certificate_json
-        self.receipt = receipt
-
-
-class ValidationStep(object):
-    """Individual task involved in validation"""
-
-    def execute(self, state):
-        passed = False
-        try:
-            passed = self.do_execute(state)
-            if passed:
-                logging.debug('Validation step %s passed', self.__class__.__name__)
-            else:
-                logging.error('Validation step %s failed!', self.__class__.__name__)
-            return passed
-        except Exception:
-            logging.exception('caught exception executing step %s', self.__class__.__name__)
-        return passed
-
-    def do_execute(self, state):
-        """Steps should override this"""
-        return False
-
-
-class ValidationGroup(ValidationStep):
+def create_v2_alpha_verification_steps(certificate_model, transaction_info, issuer_info):
     """
-    Wraps steps in a phase of validation. Generally you should be able to instantiate this directly instead of subclass
+    :param certificate_model:
+    :param transaction_info:
+    :param issuer_info:
     """
 
-    def __init__(self, steps, name, success_status=StepStatus.passed):
-        self.steps = steps
-        self.name = name
-        self.success_status = success_status
-        self.status = StepStatus.not_started
+    # TODO: ensure certificate was issued when key was valid
 
-    def name(self):
-        return self.name
-
-    def do_execute(self, state):
-        for step in self.steps:
-            passed = step.execute(state)
-            if passed:
-                self.status = self.success_status
-            else:
-                self.status = StepStatus.failed
-                break
-        return self.status == StepStatus.done or self.status == StepStatus.passed
-
-    def add_detailed_status(self, messages):
-        # first add any child detailed results
-        for step in self.steps:
-            if isinstance(step, ValidationGroup):
-                step.add_detailed_status(messages)
-
-        # add own results
-        my_results = {'name': self.name, 'status': self.status.name}
-        messages.append(my_results)
-
-
-class ComputeHashV1(ValidationStep):
-    def do_execute(self, state):
-        state.local_hash = hashlib.sha256(state.certificate_bytes).hexdigest()
-        return True
-
-
-class FetchTransaction(ValidationStep):
-    def __init__(self, connector):
-        self.connector = connector
-
-    def do_execute(self, state):
-        transaction_info = self.connector.lookup_tx(state.transaction_id)
-        if transaction_info:
-            state.blockchain_hash = transaction_info.script
-            state.revoked_addresses = transaction_info.revoked_addresses
-            return True
-        return False
-
-
-class CompareHashesV1(ValidationStep):
-    def do_execute(self, state):
-        result = hashes_match(state.local_hash, state.blockchain_hash)
-        return result
-
-
-class FetchIssuerKeys(ValidationStep):
-    def do_execute(self, state):
-        signer_url = state.certificate_json['certificate']['issuer']['id']
-
-        r = requests.get(signer_url)
-        remote_json = None
-        if r.status_code != 200:
-            logging.error('Error looking up issuer keys at url=%s, status_code=%d', signer_url, r.status_code)
-        else:
-            remote_json = r.json()
-            logging.info('Found issuer keys at url=%s', signer_url)
-
-        if remote_json:
-            state.signing_key = remote_json['issuerKeys'][0]['key']
-            state.revocation_address = remote_json['revocationKeys'][0]['key']
-            return True
-        return False
-
-
-class CheckIssuerSignature(ValidationStep):
-    def do_execute(self, state):
-        uid = state.certificate_json['assertion']['uid']
-        signature = state.certificate_json['signature']
-        if state.signing_key is None or uid is None or signature is None:
-            return False
-        message = BitcoinMessage(uid)
-        return VerifyMessage(state.signing_key, message, signature)
-
-
-class CheckNotRevoked(ValidationStep):
-    def do_execute(self, state):
-        revoked = state.revocation_address in state.revoked_addresses
-        return not revoked
-
-
-class CheckRecipientNotRevoked(ValidationStep):
-    def do_execute(self, state):
-        if 'revocationKey' in state.certificate_json['recipient']:
-            revoked = state.certificate_json['recipient']['revocationKey'] in state.revoked_addresses
-            return not revoked
-        return True
-
-
-class ComputeHashV2(ValidationStep):
-    def do_execute(self, state):
-        options = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
-        normalized = jsonld.normalize(state.certificate_json, options=options)
-        hashed = sha256(normalized)
-        state.local_hash = hashed
-        return True
-
-
-class ValidateReceipt(ValidationStep):
-    def do_execute(self, state):
-        return utils.validate_receipt(state.receipt)
-
-
-class LookupTransactionId(ValidationStep):
-    def do_execute(self, state):
-        state.transaction_id = state.receipt['anchors'][0]['sourceId']
-        return True
-
-
-class CompareHashesV2(ValidationStep):
-    def do_execute(self, state):
-        expected_certificate_hash = state.receipt['targetHash']
-        merkle_root = state.receipt['merkleRoot']
-
-        cert_hashes_match = hashes_match(state.local_hash, expected_certificate_hash)
-        merkle_root_matches = hashes_match(state.blockchain_hash, merkle_root)
-        return cert_hashes_match and merkle_root_matches
-
-
-class CheckNotExpired(ValidationStep):
-    def do_execute(self, state):
-        if not 'expires' in state.certificate_json['assertion']:
-            return True
-        expires = state.certificate_json['assertion']['expires']
-        expires_date = parse(expires)
-
-        # compare to current time. If expires_date is timezone naive, assume UTC
-        utc = pytz.UTC
-        now_tz = utc.localize(datetime.utcnow())
-        if expires_date.tzinfo is None or expires_date.tzinfo.utcoffset(expires_date) is None:
-            expires_date = utc.localize(expires_date)
-        return now_tz < expires_date
-
-def verify_json(certificate_json):
-    # Right now we only have 1 expected version.
-    return verify_v1_2(certificate_json)
-
-def verify_v1_2(certificate_json):
     # removing this check until we have caching for the schemas
-    #try:
+    # try:
     #    schema_validator.validate_v1_2(certificate_json)
     #    logging.debug('The schema validates against v1.2 schema')
-    #except Exception as e:
+    # except Exception as e:
     #    logging.error('The certificate did not comply with the Blockchain Certificate schema', e)
     #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema', e)
 
-    state = ProcessingStateV2(certificate_json['document'], certificate_json['receipt'])
+    integrity_checker = VerificationGroup(
+        steps=[IntegrityCheckerV2(certificate_model, transaction_info)],
+        name='Checking certificate has not been tampered with')
+    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info)],
+                                          name='Checking issuer signature')
+    revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
+                                           name='Checking not revoked by issuer')
+    expiration_checker = VerificationGroup(steps=[ExpiredChecker(certificate_model)],
+                                           name='Checking certificate has not expired')
 
-    chain = parse_chain_from_address(certificate_json['document']['recipient']['publicKey'])
-    connector = createTransactionLookupConnector(chain)
-    bitcoin.SelectParams(chain.name)
+    steps = [integrity_checker, signature_checker, revocation_checker, expiration_checker]
+    all_steps = VerificationGroup(steps=steps, name='Validation')
 
-    validate_receipt = ValidationGroup(steps=[ValidateReceipt()], name='Validate receipt')
-    compute_hash = ValidationGroup(steps=[ComputeHashV2()], name='Computing SHA256 digest of local certificate',
-                                   success_status=StepStatus.done)
-    fetch_transaction = ValidationGroup(steps=[LookupTransactionId(), FetchTransaction(connector)],
-                                        name='Fetch Bitcoin Transaction', success_status=StepStatus.done)
-    compare_certificate_hash = ValidationGroup(steps=[CompareHashesV2()], name='Comparing local and merkle hashes')
-    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()],
-                                      name='Checking issuer signature')
-    check_not_revoked = ValidationGroup(steps=[CheckNotRevoked(), CheckRecipientNotRevoked()],
-                                        name='Checking not revoked by issuer')
-    check_not_expired = ValidationGroup(steps=[CheckNotExpired()], name='Checking certificate has not expired')
-
-    steps = [validate_receipt, compute_hash, fetch_transaction, compare_certificate_hash,
-             check_signature, check_not_revoked, check_not_expired]
-    all_steps = ValidationGroup(steps=steps, name='Validation')
-
-    all_steps.execute(state)
-    messages = []
-    all_steps.add_detailed_status(messages)
-    for message in messages:
-        print(message['name'] + ',' + str(message['status']))
-
-    return messages
+    return all_steps
 
 
-def verify_v1_1(cert_file_bytes, transaction_id):
+def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info):
+    """
+    :param certificate_model:
+    :param transaction_info:
+    :param issuer_info:
+    """
+
+    integrity_checker = VerificationGroup(
+        steps=[IntegrityCheckerV1_2(certificate_model, transaction_info)],
+        name='Checking certificate has not been tampered with')
+    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info)],
+                                          name='Checking issuer signature')
+    revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
+                                           name='Checking not revoked')
+    expiration_checker = VerificationGroup(steps=[ExpiredChecker(certificate_model)],
+                                           name='Checking certificate has not expired')
+
+    steps = [integrity_checker, signature_checker, revocation_checker, expiration_checker]
+    all_steps = VerificationGroup(steps=steps, name='Validation')
+    return all_steps
+
+
+def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info):
     """
     0. Processing
     1. Compute SHA256 hash of local  Computing SHA256 digest of local certificate
@@ -282,73 +95,72 @@ def verify_v1_1(cert_file_bytes, transaction_id):
     3. Compare hashes
     4. Check Media Lab signature
     5. Check not revoked
-    :param cert_file_bytes:
-    :param transaction_id:
+    :param certificate_model:
+    :param transaction_info:
+    :param issuer_info:
     :return:
     """
-    state = ProcessingStateV1(cert_file_bytes, transaction_id)
 
-    chain = parse_chain_from_address(state.certificate_json['recipient']['pubkey'])
-    connector = BlockcypherConnector(chain)
-    bitcoin.SelectParams(chain.name)
+    integrity_checker = VerificationGroup(steps=[IntegrityCheckerV1_1(certificate_model, transaction_info)],
+                                          name='Checking certificate has not been tampered with')
+    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info=issuer_info)],
+                                          name='Checking issuer signature')
+    revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
+                                           name='Checking not revoked by issuer')
 
-    compute_hash = ValidationGroup(steps=[ComputeHashV1()], name='Computing SHA256 digest of local certificate',
-                                   success_status=StepStatus.done)
-    fetch_transaction = ValidationGroup(steps=[FetchTransaction(connector)], name='Fetch Bitcoin Transaction',
-                                        success_status=StepStatus.done)
-    compare_hash = ValidationGroup(steps=[CompareHashesV1()], name='Comparing local and blockchain hashes')
-    check_signature = ValidationGroup(steps=[FetchIssuerKeys(), CheckIssuerSignature()],
-                                      name='Checking issuer signature')
-    check_revoked = ValidationGroup(steps=[CheckNotRevoked()], name='Checking not revoked by issuer')
+    steps = [integrity_checker, signature_checker, revocation_checker]
+    all_steps = VerificationGroup(steps=steps, name='Validation')
 
-    steps = [compute_hash, fetch_transaction, compare_hash, check_signature, check_revoked]
-    all_steps = ValidationGroup(steps=steps, name='Validation')
+    return all_steps
 
-    result = all_steps.execute(state)
+
+def verify_certificate(certificate_model):
+    connector = createTransactionLookupConnector(certificate_model.chain)
+    transaction_info = connector.lookup_tx(certificate_model.get_transaction_id())
+    issuer_info = get_issuer_info(certificate_model.issuer_id)
+
+    if certificate_model.version == BlockcertVersion.V1_1:
+        verification_steps = create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info)
+    elif certificate_model.version == BlockcertVersion.V1_2:
+        verification_steps = create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info)
+    elif certificate_model.version == BlockcertVersion.V2:
+        verification_steps = create_v2_alpha_verification_steps(certificate_model, transaction_info, issuer_info)
+    else:
+        raise Exception('Unknown Blockchain Certificate version')
+
+    verification_steps.execute()
     messages = []
-    all_steps.add_detailed_status(messages)
+    verification_steps.add_detailed_status(messages)
     for message in messages:
         print(message['name'] + ',' + str(message['status']))
 
     return messages
 
 
-def verify_cert_file(cert_file, transaction_id=None):
-    with open(cert_file, 'rb') as cert_fp:
-        contents = cert_fp.read()
-        result = verify_cert_contents(contents, transaction_id)
-    return result
-
-
-def verify_cert_contents(cert_bytes, transaction_id=None):
-    cert_utf8 = cert_bytes.decode('utf-8')
-    cert_json = json.loads(cert_utf8)
-    if '@context' in cert_json:
-        result = verify_json(cert_json)
-    else:
-        if transaction_id is None:
-            raise Exception('v1 certificate is not accompanied with a transaction id')
-        result = verify_v1_1(cert_bytes, transaction_id)
+def verify_certificate_file(certificate_file_name, transaction_id=None):
+    with open(certificate_file_name, 'rb') as cert_fp:
+        certificate_bytes = cert_fp.read()
+        certificate_json = json.loads(certificate_bytes.decode('utf-8'))
+        certificate_model = model.to_certificate_model(certificate_json=certificate_json,
+                                                       txid=transaction_id,
+                                                       certificate_bytes=certificate_bytes)
+        result = verify_certificate(certificate_model)
     return result
 
 
 if __name__ == "__main__":
-    with open('../tests/data/1.1/sample_signed_cert-1.1.json', 'rb') as cert_file:
-        result = verify_v1_1(cert_file.read(), '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
-        print(result)
-
-    with open('../tests/data/1.2/sample_signed_cert-1.2.json') as cert_file:
-        cert_json = json.load(cert_file)
-        result = verify_v1_2(cert_json)
-        print(result)
-
-    result = verify_cert_file('../tests/data/1.2/sample_signed_cert-1.2.json')
-    print(result)
-    result = verify_cert_file('../tests/data/1.1/sample_signed_cert-1.1.json',
-                              '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
+    result = verify_certificate_file('../tests/data/1.1/sample_signed_cert-1.1.json',
+                                     '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
     print(result)
 
-    with open('../tests/data/1.2/609c2989-275f-4f4c-ab02-b245cfb09017.json') as cert_file:
-        cert_json = json.load(cert_file)
-        result = verify_v1_2(cert_json)
-        print(result)
+    result = verify_certificate_file('../tests/data/1.2/sample_signed_cert-1.2.json')
+    print(result)
+
+    # result = verify_cert_file('../tests/data/1.2/sample_signed_cert-1.2.json')
+    # print(result)
+    # result = verify_cert_file('../tests/data/1.1/sample_signed_cert-1.1.json',
+    #                          '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
+    # print(result)
+
+    result = verify_certificate_file('../609c2989-275f-4f4c-ab02-b245cfb09017.json')
+    print(result)

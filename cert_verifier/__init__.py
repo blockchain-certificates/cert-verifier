@@ -27,6 +27,7 @@ class TransactionData:
     TransactionLookupConnector implementations return this object to shield the caller from api-specific json parsing.
     """
 
-    def __init__(self, revoked_addresses, op_return):
-        self.revoked_addresses = revoked_addresses
+    def __init__(self, op_return, date_time_utc, revoked_addresses):
         self.op_return = op_return
+        self.date_time_utc = date_time_utc
+        self.revoked_addresses = revoked_addresses

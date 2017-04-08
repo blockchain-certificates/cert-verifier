@@ -53,7 +53,7 @@ class TestVerify(unittest.TestCase):
         revoked_addresses = set()
         revoked_addresses.add('123456')
         revoked_addresses.add('444444')
-        transaction_data = TransactionData(revoked_addresses, None)
+        transaction_data = TransactionData(None, None, revoked_addresses)
 
         mock_cert = Mock()
         mock_cert.blockcert_signature.recipient_public_key = '123456'
@@ -65,7 +65,7 @@ class TestVerify(unittest.TestCase):
         revoked_addresses = set()
         revoked_addresses.add('343434')
         revoked_addresses.add('444444')
-        transaction_data = TransactionData(revoked_addresses, None)
+        transaction_data = TransactionData(None, None, revoked_addresses)
 
         mock_cert = Mock()
         mock_cert.blockcert_signature.recipient_public_key = '123456'

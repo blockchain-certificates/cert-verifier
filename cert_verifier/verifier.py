@@ -5,34 +5,58 @@ Verify blockchain certificates (http://www.blockcerts.org/)
 import requests
 from cert_core import BlockcertVersion
 from cert_core import model
+from cert_core import parse_chain_from_address
 
 from cert_verifier.checks import *
 from cert_verifier.connectors import createTransactionLookupConnector
 
-cache = SimpleCache()
-lock = Lock()
-
 
 class IssuerInfoV1x(object):
     def __init__(self, issuer_json):
-        # TODO: need timerange from cert
         self.signing_key = issuer_json['issuerKeys'][0]['key']
         self.revocation_address = issuer_json['revocationKeys'][0]['key']
 
 
-def get_issuer_info(issuer_url):
-    r = requests.get(issuer_url)
+class IssuerInfoV2(object):
+    def __init__(self, signing_key, revoked_assertions):
+        self.signing_key = signing_key
+        self.revoked_assertions = revoked_assertions
+
+
+def get_issuer_info(certificate_model):
+    issuer_json = get_remote_json(certificate_model.issuer_id)
+    if not issuer_json:
+        raise Exception('Issuer URL returned no results ' + certificate_model.issuer_id)
+    if certificate_model.version == BlockcertVersion.V2:
+        revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
+        revoked_json = get_remote_json(revocation_url)
+        if revoked_json and revoked_json['revokedAssertions']:
+            revoked_assertions = [RevokedAssertion(r['id'], r['revocationReason']) for r in revoked_json['revokedAssertions']]
+        else:
+            revoked_assertions = []
+        return IssuerInfoV2(issuer_json['publicKey'], revoked_assertions)
+    else:
+        return IssuerInfoV1x(issuer_json)
+
+
+class RevokedAssertion(object):
+    def __init__(self, id, reason):
+        self.id = id
+        self.reason = reason
+
+
+def get_remote_json(the_url):
+    r = requests.get(the_url)
     if r.status_code != 200:
-        logging.error('Error looking up issuer keys at url=%s, status_code=%d', issuer_url, r.status_code)
+        logging.error('Error looking up url=%s, status_code=%d', the_url, r.status_code)
+        return None
     else:
         remote_json = r.json()
-        logging.debug('Found issuer keys at url=%s', issuer_url)
-
-        return IssuerInfoV1x(remote_json)
-    return None
+        logging.debug('Found results at url=%s', the_url)
+        return remote_json
 
 
-def create_v2_alpha_verification_steps(certificate_model, transaction_info, issuer_info):
+def create_v2_verification_steps(certificate_model, transaction_info, issuer_info, chain):
     """
     :param certificate_model:
     :param transaction_info:
@@ -50,11 +74,11 @@ def create_v2_alpha_verification_steps(certificate_model, transaction_info, issu
     #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema', e)
 
     integrity_checker = VerificationGroup(
-        steps=[IntegrityCheckerV2(certificate_model, transaction_info)],
+        steps=[IntegrityCheckerV2(certificate_model, transaction_info, issuer_info, chain)],
         name='Checking certificate has not been tampered with')
-    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info)],
+    signature_checker = VerificationGroup(steps=[SignatureCheckerV2(certificate_model, issuer_info, chain)],
                                           name='Checking issuer signature')
-    revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
+    revocation_checker = VerificationGroup(steps=[RevocationCheckerV2(certificate_model, transaction_info, issuer_info)],
                                            name='Checking not revoked by issuer')
     expiration_checker = VerificationGroup(steps=[ExpiredChecker(certificate_model)],
                                            name='Checking certificate has not expired')
@@ -65,7 +89,7 @@ def create_v2_alpha_verification_steps(certificate_model, transaction_info, issu
     return all_steps
 
 
-def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info):
+def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info, chain):
     """
     :param certificate_model:
     :param transaction_info:
@@ -75,7 +99,7 @@ def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_i
     integrity_checker = VerificationGroup(
         steps=[IntegrityCheckerV1_2(certificate_model, transaction_info)],
         name='Checking certificate has not been tampered with')
-    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info)],
+    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info, chain)],
                                           name='Checking issuer signature')
     revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
                                            name='Checking not revoked')
@@ -87,7 +111,7 @@ def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_i
     return all_steps
 
 
-def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info):
+def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info, chain):
     """
     0. Processing
     1. Compute SHA256 hash of local  Computing SHA256 digest of local certificate
@@ -103,7 +127,8 @@ def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_i
 
     integrity_checker = VerificationGroup(steps=[IntegrityCheckerV1_1(certificate_model, transaction_info)],
                                           name='Checking certificate has not been tampered with')
-    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info=issuer_info)],
+    signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info=issuer_info,
+                                                                  chain=chain)],
                                           name='Checking issuer signature')
     revocation_checker = VerificationGroup(steps=[RevocationChecker(certificate_model, transaction_info)],
                                            name='Checking not revoked by issuer')
@@ -115,16 +140,17 @@ def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_i
 
 
 def verify_certificate(certificate_model):
-    connector = createTransactionLookupConnector(certificate_model.chain)
+    issuer_info = get_issuer_info(certificate_model)
+    chain = parse_chain_from_address(issuer_info.signing_key)
+    connector = createTransactionLookupConnector(chain)
     transaction_info = connector.lookup_tx(certificate_model.get_transaction_id())
-    issuer_info = get_issuer_info(certificate_model.issuer_id)
 
     if certificate_model.version == BlockcertVersion.V1_1:
-        verification_steps = create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info)
+        verification_steps = create_v1_1_verification_steps(certificate_model, transaction_info, issuer_info, chain)
     elif certificate_model.version == BlockcertVersion.V1_2:
-        verification_steps = create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info)
+        verification_steps = create_v1_2_verification_steps(certificate_model, transaction_info, issuer_info, chain)
     elif certificate_model.version == BlockcertVersion.V2:
-        verification_steps = create_v2_alpha_verification_steps(certificate_model, transaction_info, issuer_info)
+        verification_steps = create_v2_verification_steps(certificate_model, transaction_info, issuer_info, chain)
     else:
         raise Exception('Unknown Blockchain Certificate version')
 

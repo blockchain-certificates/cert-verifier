@@ -13,11 +13,10 @@ from cert_verifier.errors import *
 
 def createTransactionLookupConnector(chain=Chain.mainnet):
     """
-    Use BlockrIoConnector by default for now
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    return BlockrIOConnector(chain)
+    return BlockcypherConnector(chain)
 
 
 class TransactionLookupConnector:
@@ -33,7 +32,9 @@ class TransactionLookupConnector:
         return self.parse_tx(json_response)
 
     def fetch_tx(self, txid):
-        r = requests.get(self.url % txid)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+        r = requests.get(self.url % txid, headers=headers)
         if r.status_code != 200:
             logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
             raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
@@ -71,7 +72,7 @@ class BlockchainInfoConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(revoked, script)
+        return TransactionData(script, None, revoked)
 
 
 class BlockrIOConnector(TransactionLookupConnector):
@@ -88,16 +89,20 @@ class BlockrIOConnector(TransactionLookupConnector):
     def parse_tx(self, json_response):
         revoked = set()
         script = None
+        time = json_response['data']['time_utc']
         for o in json_response['data']['vouts']:
             if float(o.get('amount', 1)) == 0:
-                script = o['extras']['script'][4:]
+                if not 'extras' in o:
+                    script = None
+                else:
+                    script = o['extras']['script'][4:]
             else:
                 if o.get('is_spent') and float(o.get('is_spent', 1)) == 49:
                     revoked.add(o.get('address'))
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
-            raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(revoked, script)
+            raise InvalidTransactionError('transaction response is missing op_return script')
+        return TransactionData(script, time, revoked)
 
 
 
@@ -119,6 +124,7 @@ class BlockcypherConnector(TransactionLookupConnector):
     def parse_tx(self, json_response):
         revoked = set()
         script = None
+        time = json_response['received']
         for o in json_response['outputs']:
             if float(o.get('value', 1)) == 0:
                 script = o['data_hex']
@@ -128,5 +134,5 @@ class BlockcypherConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(revoked, script)
+        return TransactionData(script, time, revoked)
 

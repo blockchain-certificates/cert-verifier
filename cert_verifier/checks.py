@@ -7,9 +7,11 @@ from threading import Lock
 import bitcoin
 import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
-from cert_schema import jsonld_document_loader
+from cert_core import Chain
 from chainpoint.chainpoint import Chainpoint
-from pyld import jsonld
+from ld_koblitz_signatures import signatures
+from ld_koblitz_signatures.document_loader import jsonld_document_loader
+from ld_koblitz_signatures.signatures import SignatureOptions
 from werkzeug.contrib.cache import SimpleCache
 
 from cert_verifier import StepStatus
@@ -26,6 +28,9 @@ def cached_document_loader(url, override_cache=False):
     doc = jsonld_document_loader(url)
     cache.set(url, doc)
     return doc
+
+
+JSONLD_OPTIONS = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
 
 
 class VerificationCheck(object):
@@ -106,8 +111,8 @@ class IntegrityCheckerV1_2(VerificationCheck):
     def do_execute(self):
         cp = Chainpoint()
         valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
-
-        local_hash = compute_jsonld_hash(self.certificate.certificate_json['document'])
+        normalized = signatures.normalize_jsonld(self.certificate.certificate_json['document'])
+        local_hash = hash_normalized(normalized)
         cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
         merkle_root_matches = hashes_match(self.transaction_info.op_return,
                                            self.certificate.blockcert_signature.proof.merkle_root)
@@ -115,14 +120,19 @@ class IntegrityCheckerV1_2(VerificationCheck):
 
 
 class IntegrityCheckerV2(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(IntegrityCheckerV2, self).__init__(certificate, transaction_info=transaction_info)
+    def __init__(self, certificate, transaction_info, issuer_info, chain):
+        super(IntegrityCheckerV2, self).__init__(certificate, transaction_info=transaction_info,
+                                                 issuer_info=issuer_info)
+        self.chain = chain
 
     def do_execute(self):
         cp = Chainpoint()
-        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
-
-        local_hash = compute_jsonld_hash(self.certificate.certificate_json)
+        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['signature']['merkleProof']))
+        import copy
+        copy = copy.deepcopy(self.certificate.certificate_json)
+        del copy['signature']
+        normalized = signatures.normalize_jsonld(copy)
+        local_hash = hash_normalized(normalized)
 
         cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
         merkle_root_matches = hashes_match(self.transaction_info.op_return,
@@ -144,6 +154,17 @@ class RevocationChecker(VerificationCheck):
             return False
         return True
 
+URN_UUID_PREFIX = 'urn:uuid:'
+
+class RevocationCheckerV2(VerificationCheck):
+    def __init__(self, certificate, transaction_info, issuer_info):
+        super(RevocationCheckerV2, self).__init__(certificate, transaction_info=transaction_info,
+                                                  issuer_info=issuer_info)
+
+    def do_execute(self):
+        uids_to_check = [r.id[len(URN_UUID_PREFIX):] for r in self.issuer_info.revoked_assertions]
+        return not self.certificate.uid in uids_to_check
+
 
 class ExpiredChecker(VerificationCheck):
     def __init__(self, certificate):
@@ -154,21 +175,34 @@ class ExpiredChecker(VerificationCheck):
 
 
 class SignatureChecker(VerificationCheck):
-    def __init__(self, certificate, issuer_info):
+    def __init__(self, certificate, issuer_info, chain=Chain.mainnet):
         super(SignatureChecker, self).__init__(certificate, issuer_info=issuer_info)
+        self.chain = chain
 
     def do_execute(self):
         return check_signature(self.issuer_info.signing_key, self.certificate.uid,
-                               self.certificate.blockcert_signature.signature_value,
-                               self.certificate.chain.name)
+                               self.certificate.blockcert_signature.signature_value, self.chain)
 
 
-def compute_jsonld_hash(certificate_json, fallback_ctx=False):
-    options = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
+class SignatureCheckerV2(VerificationCheck):
+    def __init__(self, certificate, issuer_info, chain=Chain.mainnet):
+        super(SignatureCheckerV2, self).__init__(certificate, issuer_info=issuer_info)
+        self.chain = chain
 
-    if fallback_ctx:
-        options['expandContext': {'@vocab': 'https://fallback.org/'}]
-    normalized = jsonld.normalize(certificate_json, options=options)
+    def do_execute(self):
+        # import copy
+        # certificate_json_copy = copy.deepcopy(self.certificate.certificate_json)
+        # del certificate_json_copy['signature']
+        # normalized = jsonld.normalize(certificate_json_copy, options=JSONLD_OPTIONS)
+
+        # return check_signature(self.issuer_info.signing_key, normalized,
+        #                       self.certificate.blockcert_signature.signature_value, self.chain)
+        signed_json = self.certificate.certificate_json
+        options = SignatureOptions(signed_json['signature']['created'], signed_json['signature']['creator'])
+        return signatures.verify(signed_json, options, self.chain.name)
+
+
+def hash_normalized(normalized):
     encoded = normalized.encode('utf-8')
     return hashlib.sha256(encoded).hexdigest()
 
@@ -177,14 +211,14 @@ def hashes_match(actual_hash, expected_hash):
     return actual_hash in expected_hash or actual_hash == expected_hash
 
 
-def check_signature(signing_key, message, signature, chain_name):
+def check_signature(signing_key, message, signature, chain):
     if signing_key is None or message is None or signature is None:
         return False
     message = BitcoinMessage(message)
     try:
         lock.acquire()
         # obtain lock while modifying global state
-        bitcoin.SelectParams(chain_name)
+        bitcoin.SelectParams(chain.name)
         return VerifyMessage(signing_key, message, signature)
     finally:
         lock.release()

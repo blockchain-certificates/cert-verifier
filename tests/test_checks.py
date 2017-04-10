@@ -13,7 +13,7 @@ from cert_verifier.checks import IntegrityCheckerV1_1, ExpiredChecker, Revocatio
 class TestVerify(unittest.TestCase):
     def test_compare_hashes_v1_1(self):
         mock_cert = Mock()
-        mock_cert.blockcert_signature.proof.raw_bytes = '{"abc123": true}'.encode('utf-8')
+        mock_cert.document = '{"abc123": true}'.encode('utf-8')
         mock_transaction = Mock()
         mock_transaction.op_return = 'e323ace018d459e737988f8c02944224f9d02d2ee58c60eaaf134dd2a36e7d32'
 
@@ -22,7 +22,7 @@ class TestVerify(unittest.TestCase):
 
     def test_compare_hashes_v1_1_fail(self):
         mock_cert = Mock()
-        mock_cert.blockcert_signature.proof.raw_bytes = '{"abc123": true}'.encode('utf-8')
+        mock_cert.document = '{"abc123": true}'.encode('utf-8')
         mock_transaction = Mock()
         mock_transaction.op_return = 'e323ace7777459e737988f8c02944224f9d02d2ee58c60eaaf134dd2a36e7d32'
 

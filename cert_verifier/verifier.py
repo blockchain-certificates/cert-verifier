@@ -31,7 +31,8 @@ def get_issuer_info(certificate_model):
         revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
         revoked_json = get_remote_json(revocation_url)
         if revoked_json and revoked_json['revokedAssertions']:
-            revoked_assertions = [RevokedAssertion(r['id'], r['revocationReason']) for r in revoked_json['revokedAssertions']]
+            revoked_assertions = [RevokedAssertion(r['id'], r['revocationReason']) for r in
+                                  revoked_json['revokedAssertions']]
         else:
             revoked_assertions = []
         return IssuerInfoV2(issuer_json['publicKey'], revoked_assertions)
@@ -61,6 +62,7 @@ def create_v2_verification_steps(certificate_model, transaction_info, issuer_inf
     :param certificate_model:
     :param transaction_info:
     :param issuer_info:
+    :param chain:
     """
 
     # TODO: ensure certificate was issued when key was valid
@@ -74,11 +76,13 @@ def create_v2_verification_steps(certificate_model, transaction_info, issuer_inf
     #    raise InvalidCertificateError('The certificate did not comply with the Blockchain Certificate schema', e)
 
     integrity_checker = VerificationGroup(
-        steps=[IntegrityCheckerV2(certificate_model, transaction_info, issuer_info, chain)],
+        steps=[ReceiptIntegrityChecker(certificate_model, transaction_info),
+               LocalHashIntegrityChecker(certificate_model, transaction_info),
+               MerkleRootIntegrityChecker(certificate_model, transaction_info)],
         name='Checking certificate has not been tampered with')
     signature_checker = VerificationGroup(steps=[SignatureCheckerV2(certificate_model, issuer_info, chain)],
                                           name='Checking issuer signature')
-    revocation_checker = VerificationGroup(steps=[RevocationCheckerV2(certificate_model, transaction_info, issuer_info)],
+    revocation_checker = VerificationGroup(steps=[RevocationCheckerV2(certificate_model, issuer_info)],
                                            name='Checking not revoked by issuer')
     expiration_checker = VerificationGroup(steps=[ExpiredChecker(certificate_model)],
                                            name='Checking certificate has not expired')
@@ -94,10 +98,13 @@ def create_v1_2_verification_steps(certificate_model, transaction_info, issuer_i
     :param certificate_model:
     :param transaction_info:
     :param issuer_info:
+    :param chain:
     """
 
     integrity_checker = VerificationGroup(
-        steps=[IntegrityCheckerV1_2(certificate_model, transaction_info)],
+        steps=[ReceiptIntegrityChecker(certificate_model, transaction_info),
+               LocalHashIntegrityChecker(certificate_model, transaction_info),
+               MerkleRootIntegrityChecker(certificate_model, transaction_info)],
         name='Checking certificate has not been tampered with')
     signature_checker = VerificationGroup(steps=[SignatureChecker(certificate_model, issuer_info, chain)],
                                           name='Checking issuer signature')
@@ -122,6 +129,7 @@ def create_v1_1_verification_steps(certificate_model, transaction_info, issuer_i
     :param certificate_model:
     :param transaction_info:
     :param issuer_info:
+    :param chain:
     :return:
     """
 
@@ -175,18 +183,18 @@ def verify_certificate_file(certificate_file_name, transaction_id=None):
 
 
 if __name__ == "__main__":
-    result = verify_certificate_file('../tests/data/1.1/sample_signed_cert-1.1.json',
-                                     '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
+    # This one is revoked and should fail
+    result = verify_certificate_file('../tests/data/2.0/93019408-acd8-4420-be5e-0400d643954a.json')
     print(result)
+    # result = verify_certificate_file('../tests/data/1.1/sample_signed_cert-1.1.json',
+    #                          '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
+    # print(result)
 
-    result = verify_certificate_file('../tests/data/1.2/sample_signed_cert-1.2.json')
-    print(result)
+    # result = verify_certificate_file('../tests/data/1.2/sample_signed_cert-1.2.json')
+    # print(result)
 
     # result = verify_cert_file('../tests/data/1.2/sample_signed_cert-1.2.json')
     # print(result)
     # result = verify_cert_file('../tests/data/1.1/sample_signed_cert-1.1.json',
     #                          '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
     # print(result)
-
-    result = verify_certificate_file('../609c2989-275f-4f4c-ab02-b245cfb09017.json')
-    print(result)

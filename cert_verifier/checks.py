@@ -33,6 +33,16 @@ def cached_document_loader(url, override_cache=False):
 JSONLD_OPTIONS = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
 
 
+def cached_document_loader(url, override_cache=False):
+    if not override_cache:
+        result = cache.get(url)
+        if result:
+            return result
+    doc = jsonld_document_loader(url)
+    cache.set(url, doc)
+    return doc
+
+
 class VerificationCheck(object):
     """Individual task involved in verification"""
 
@@ -100,44 +110,39 @@ class IntegrityCheckerV1_1(VerificationCheck):
 
     def do_execute(self):
         blockchain_hash = self.transaction_info.op_return
-        local_hash = hashlib.sha256(self.certificate.blockcert_signature.proof.raw_bytes).hexdigest()
+        local_hash = hashlib.sha256(self.certificate.document).hexdigest()
         return hashes_match(blockchain_hash, local_hash)
 
 
-class IntegrityCheckerV1_2(VerificationCheck):
+class LocalHashIntegrityChecker(VerificationCheck):
     def __init__(self, certificate, transaction_info):
-        super(IntegrityCheckerV1_2, self).__init__(certificate, transaction_info=transaction_info)
+        super(LocalHashIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
+
+    def do_execute(self):
+        normalized = signatures.normalize_jsonld(self.certificate.document)
+        local_hash = hash_normalized(normalized)
+        cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.merkle_proof.target_hash)
+        return cert_hashes_match
+
+
+class MerkleRootIntegrityChecker(VerificationCheck):
+    def __init__(self, certificate, transaction_info):
+        super(MerkleRootIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
+
+    def do_execute(self):
+        merkle_root_matches = hashes_match(self.transaction_info.op_return,
+                                           self.certificate.blockcert_signature.merkle_proof.merkle_root)
+        return merkle_root_matches
+
+
+class ReceiptIntegrityChecker(VerificationCheck):
+    def __init__(self, certificate, transaction_info):
+        super(ReceiptIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
 
     def do_execute(self):
         cp = Chainpoint()
-        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['receipt']))
-        normalized = signatures.normalize_jsonld(self.certificate.certificate_json['document'])
-        local_hash = hash_normalized(normalized)
-        cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
-        merkle_root_matches = hashes_match(self.transaction_info.op_return,
-                                           self.certificate.blockcert_signature.proof.merkle_root)
-        return valid_receipt and cert_hashes_match and merkle_root_matches
-
-
-class IntegrityCheckerV2(VerificationCheck):
-    def __init__(self, certificate, transaction_info, issuer_info, chain):
-        super(IntegrityCheckerV2, self).__init__(certificate, transaction_info=transaction_info,
-                                                 issuer_info=issuer_info)
-        self.chain = chain
-
-    def do_execute(self):
-        cp = Chainpoint()
-        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.certificate_json['signature']['merkleProof']))
-        import copy
-        copy = copy.deepcopy(self.certificate.certificate_json)
-        del copy['signature']
-        normalized = signatures.normalize_jsonld(copy)
-        local_hash = hash_normalized(normalized)
-
-        cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.proof.target_hash)
-        merkle_root_matches = hashes_match(self.transaction_info.op_return,
-                                           self.certificate.blockcert_signature.proof.merkle_root)
-        return valid_receipt and cert_hashes_match and merkle_root_matches
+        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.blockcert_signature.merkle_proof.proof_json))
+        return valid_receipt
 
 
 class RevocationChecker(VerificationCheck):
@@ -154,17 +159,17 @@ class RevocationChecker(VerificationCheck):
             return False
         return True
 
-URN_UUID_PREFIX = 'urn:uuid:'
 
 class RevocationCheckerV2(VerificationCheck):
-    def __init__(self, certificate, transaction_info, issuer_info):
-        super(RevocationCheckerV2, self).__init__(certificate, transaction_info=transaction_info,
-                                                  issuer_info=issuer_info)
+    def __init__(self, certificate, issuer_info):
+        super(RevocationCheckerV2, self).__init__(certificate, issuer_info=issuer_info)
 
     def do_execute(self):
-        uids_to_check = [r.id[len(URN_UUID_PREFIX):] for r in self.issuer_info.revoked_assertions]
-        return not self.certificate.uid in uids_to_check
-
+        uids_to_check = [r.id for r in self.issuer_info.revoked_assertions]
+        result = not self.certificate.uid in uids_to_check
+        if not result:
+            logging.error('This certificate has been revoked by the issuer')
+        return result
 
 class ExpiredChecker(VerificationCheck):
     def __init__(self, certificate):

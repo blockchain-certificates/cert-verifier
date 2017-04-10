@@ -5,8 +5,8 @@ Connectors supporting Bitcoin transaction lookups. This is used in the Blockchai
 import logging
 
 import requests
-
 from cert_core import Chain
+
 from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
@@ -16,7 +16,7 @@ def createTransactionLookupConnector(chain=Chain.mainnet):
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    return BlockcypherConnector(chain)
+    return FallbackConnector(chain)
 
 
 class TransactionLookupConnector:
@@ -36,7 +36,7 @@ class TransactionLookupConnector:
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
         r = requests.get(self.url % txid, headers=headers)
         if r.status_code != 200:
-            logging.error('Error looking up by transaction_id=%s, status_code=%d', txid, r.status_code)
+            logging.error('Error looking up transaction_id with url=%s, status_code=%d', self.url % txid, r.status_code)
             raise InvalidTransactionError('error looking up transaction_id=%s' % txid)
         return r.json()
 
@@ -47,6 +47,24 @@ class TransactionLookupConnector:
         :return: TransactionData
         """
         return None
+
+
+class FallbackConnector(TransactionLookupConnector):
+    def __init__(self, chain):
+        self.chain = chain
+        self.connectors = [BlockcypherConnector(chain), BlockrIOConnector(chain)]
+
+    def lookup_tx(self, txid):
+        exceptions = []
+        for connector in self.connectors:
+            try:
+                response = connector.lookup_tx(txid)
+                if response:
+                    return response
+            except Exception as e:
+                logging.warning('Error looking up transaction, trying more connectors')
+                exceptions.append(e)
+        raise InvalidTransactionError(exceptions)
 
 
 class BlockchainInfoConnector(TransactionLookupConnector):
@@ -85,7 +103,6 @@ class BlockrIOConnector(TransactionLookupConnector):
             raise Exception(
                 'unsupported chain (%s) requested with BlockrIO collector. Currently only testnet and mainnet are supported' % chain)
 
-
     def parse_tx(self, json_response):
         revoked = set()
         script = None
@@ -103,7 +120,6 @@ class BlockrIOConnector(TransactionLookupConnector):
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script')
         return TransactionData(script, time, revoked)
-
 
 
 class BlockcypherConnector(TransactionLookupConnector):
@@ -135,4 +151,3 @@ class BlockcypherConnector(TransactionLookupConnector):
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
         return TransactionData(script, time, revoked)
-

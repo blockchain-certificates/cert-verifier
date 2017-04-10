@@ -15,7 +15,6 @@ if sys.version > '3':
 
     def hexlify(b): return binascii.hexlify(b).decode('utf8')
 
-
 StepStatus = Enum('StepStatus', ['not_started', 'done', 'passed', 'failed'])
 
 

@@ -32,14 +32,14 @@ class TestVerify(unittest.TestCase):
         self.assertEquals(StepStatus.passed.name, result[-1]['status'])
 
     def test_verify_cert_file_v2(self):
-        result = verifier.verify_certificate_file('data/2.0/1dabb524-8365-4550-b499-a8119f6bf5d2.json')
+        result = verifier.verify_certificate_file('data/2.0/ee098d8e-c8c1-4ff0-b38a-8d868f1daa8e.json')
         print(result)
         self.assertEquals(StepStatus.passed.name, result[-1]['status'])
 
     def test_verify_cert_file_v2_revoked(self):
         # 93019408-acd8-4420-be5e-0400d643954a
         # 1dabb524-8365-4550-b499-a8119f6bf5d2
-        result = verifier.verify_certificate_file('data/2.0/93019408-acd8-4420-be5e-0400d643954a.json')
+        result = verifier.verify_certificate_file('data/2.0/d4d08ae3-6d8c-489d-be60-cbffc783f43f.json')
         print(result)
         self.assertEquals(StepStatus.failed.name, result[2]['status'])
 

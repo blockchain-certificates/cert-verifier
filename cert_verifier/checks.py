@@ -52,17 +52,7 @@ class VerificationCheck(object):
         self.issuer_info = issuer_info
 
     def execute(self):
-        passed = False
-        try:
-            passed = self.do_execute()
-            if passed:
-                logging.debug('Verification step %s passed', self.__class__.__name__)
-            else:
-                logging.error('Verification step %s failed!', self.__class__.__name__)
-            return passed
-        except Exception:
-            logging.exception('caught exception executing step %s', self.__class__.__name__)
-        return passed
+        return self.do_execute()
 
     def do_execute(self):
         """Steps should override this"""
@@ -84,11 +74,19 @@ class VerificationGroup(VerificationCheck):
         return self.name
 
     def do_execute(self):
+
         for step in self.steps:
-            passed = step.do_execute()
-            if passed:
-                self.status = self.success_status
-            else:
+            try:
+                passed = step.do_execute()
+                if passed:
+                    self.status = self.success_status
+                    logging.debug('Verification step %s passed', self.__class__.__name__)
+                else:
+                    self.status = StepStatus.failed
+                    logging.error('Verification step %s failed!', self.__class__.__name__)
+                    break
+            except Exception:
+                logging.exception('caught exception executing step %s', self.__class__.__name__)
                 self.status = StepStatus.failed
                 break
         return self.status == StepStatus.done or self.status == StepStatus.passed

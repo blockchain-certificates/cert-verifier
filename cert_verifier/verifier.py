@@ -184,7 +184,10 @@ def verify_certificate_file(certificate_file_name, transaction_id=None):
 
 if __name__ == "__main__":
     # This one is revoked and should fail
-    result = verify_certificate_file('../tests/data/2.0/93019408-acd8-4420-be5e-0400d643954a.json')
+    result = verify_certificate_file('../tests/data/2.0/d4d08ae3-6d8c-489d-be60-cbffc783f43f.json')
+    print(result)
+
+    result = verify_certificate_file('../tests/data/2.0/ee098d8e-c8c1-4ff0-b38a-8d868f1daa8e.json')
     print(result)
     # result = verify_certificate_file('../tests/data/1.1/sample_signed_cert-1.1.json',
     #                          '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')

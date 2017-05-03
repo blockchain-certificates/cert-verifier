@@ -14,9 +14,9 @@ with open(os.path.join(here, 'README.md')) as fp:
 
 setup(
     name='cert-verifier',
-    version='1.2.22',
+    version='2.0b5',
     description='Verifies blockchain certificates',
-    author='MIT Media Lab Blockchain Certificates',
+    author='Blockcerts',
     tests_require=['tox'],
     url='https://github.com/blockchain-certificates/cert-verifier',
     license='MIT',

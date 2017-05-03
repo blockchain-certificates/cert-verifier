@@ -42,7 +42,6 @@ This project uses tox to validate against several python environments.
     ./run_tests.sh
     ```
 
-
 ## Contact
 
 Contact [info@blockcerts.org](mailto:info@blockcerts.org) with questions

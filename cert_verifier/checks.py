@@ -7,14 +7,17 @@ from threading import Lock
 import bitcoin
 import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
+from cert_core import BlockcertVersion
 from cert_core import Chain
+from cert_core.model import SignatureType, RevocationType
+from cert_schema import BlockcertValidationError
+from cert_schema import jsonld_document_loader
+from cert_schema import normalize_jsonld
 from chainpoint.chainpoint import Chainpoint
-from ld_koblitz_signatures import signatures
-from ld_koblitz_signatures.document_loader import jsonld_document_loader
-from ld_koblitz_signatures.signatures import SignatureOptions
 from werkzeug.contrib.cache import SimpleCache
 
 from cert_verifier import StepStatus
+from cert_verifier.errors import InvalidCertificateError
 
 cache = SimpleCache()
 lock = Lock()
@@ -30,17 +33,13 @@ def cached_document_loader(url, override_cache=False):
     return doc
 
 
-JSONLD_OPTIONS = {'algorithm': 'URDNA2015', 'format': 'application/nquads', 'documentLoader': cached_document_loader}
+def hash_normalized(normalized):
+    encoded = normalized.encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
 
 
-def cached_document_loader(url, override_cache=False):
-    if not override_cache:
-        result = cache.get(url)
-        if result:
-            return result
-    doc = jsonld_document_loader(url)
-    cache.set(url, doc)
-    return doc
+def hashes_match(actual_hash, expected_hash):
+    return actual_hash in expected_hash or actual_hash == expected_hash
 
 
 class VerificationCheck(object):
@@ -102,134 +101,214 @@ class VerificationGroup(VerificationCheck):
         messages.append(my_results)
 
 
-class IntegrityCheckerV1_1(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(IntegrityCheckerV1_1, self).__init__(certificate, transaction_info=transaction_info)
+class BinaryFileIntegrityChecker(VerificationCheck):
+    def __init__(self, content_to_verify, transaction_info):
+        self.content_to_verify = content_to_verify
+        self.transaction_info = transaction_info
 
     def do_execute(self):
         blockchain_hash = self.transaction_info.op_return
-        local_hash = hashlib.sha256(self.certificate.document).hexdigest()
+        local_hash = hashlib.sha256(self.content_to_verify).hexdigest()
         return hashes_match(blockchain_hash, local_hash)
 
 
-class LocalHashIntegrityChecker(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(LocalHashIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
+class NormalizedJsonLdIntegrityChecker(VerificationCheck):
+    def __init__(self, content_to_verify, expected_hash, detect_unmapped_fields=False):
+        self.content_to_verify = content_to_verify
+        self.expected_hash = expected_hash
+        self.detect_unmapped_fields = detect_unmapped_fields
 
     def do_execute(self):
-        normalized = signatures.normalize_jsonld(self.certificate.document)
-        local_hash = hash_normalized(normalized)
-        cert_hashes_match = hashes_match(local_hash, self.certificate.blockcert_signature.merkle_proof.target_hash)
-        return cert_hashes_match
+        try:
+            normalized = normalize_jsonld(self.content_to_verify, document_loader=cached_document_loader,
+                                          detect_unmapped_fields=self.detect_unmapped_fields)
+            local_hash = hash_normalized(normalized)
+            cert_hashes_match = hashes_match(local_hash, self.expected_hash)
+            return cert_hashes_match
+        except BlockcertValidationError:
+            logging.error('Certificate has been modified', exc_info=True)
+            return False
 
 
 class MerkleRootIntegrityChecker(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(MerkleRootIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
+    def __init__(self, expected_merkle_root, actual_merkle_root):
+        self.expected_merkle_root = expected_merkle_root
+        self.actual_merkle_root = actual_merkle_root
 
     def do_execute(self):
-        merkle_root_matches = hashes_match(self.transaction_info.op_return,
-                                           self.certificate.blockcert_signature.merkle_proof.merkle_root)
+        merkle_root_matches = hashes_match(self.expected_merkle_root,
+                                           self.actual_merkle_root)
         return merkle_root_matches
 
 
 class ReceiptIntegrityChecker(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(ReceiptIntegrityChecker, self).__init__(certificate, transaction_info=transaction_info)
+    def __init__(self, chainpoint_proof):
+        self.chainpoint_proof = chainpoint_proof
 
     def do_execute(self):
         cp = Chainpoint()
-        valid_receipt = cp.valid_receipt(json.dumps(self.certificate.blockcert_signature.merkle_proof.proof_json))
+        valid_receipt = cp.valid_receipt(json.dumps(self.chainpoint_proof))
         return valid_receipt
 
 
-class RevocationChecker(VerificationCheck):
-    def __init__(self, certificate, transaction_info):
-        super(RevocationChecker, self).__init__(certificate, transaction_info=transaction_info)
-
+class NoopChecker(VerificationCheck):
     def do_execute(self):
-        spend_to_revoke_blockcert_signature = self.certificate.blockcert_signature
-        if spend_to_revoke_blockcert_signature.recipient_public_key and \
-                        spend_to_revoke_blockcert_signature.recipient_public_key in self.transaction_info.revoked_addresses:
-            return False
-        if spend_to_revoke_blockcert_signature.per_recipient_revocation_key and \
-                        spend_to_revoke_blockcert_signature.per_recipient_revocation_key in self.transaction_info.revoked_addresses:
-            return False
         return True
 
 
-class RevocationCheckerV2(VerificationCheck):
-    def __init__(self, certificate, issuer_info):
-        super(RevocationCheckerV2, self).__init__(certificate, issuer_info=issuer_info)
+class RevocationChecker(VerificationCheck):
+    def __init__(self, values_to_check, revoked_values):
+        self.values_to_check = values_to_check
+        self.revoked_values = revoked_values
 
     def do_execute(self):
-        uids_to_check = [r.id for r in self.issuer_info.revoked_assertions]
-        result = not self.certificate.uid in uids_to_check
-        if not result:
+        revoked = any(k in self.revoked_values for k in self.values_to_check)
+        if revoked:
             logging.error('This certificate has been revoked by the issuer')
-        return result
+        return not revoked
+
 
 class ExpiredChecker(VerificationCheck):
-    def __init__(self, certificate):
-        super(ExpiredChecker, self).__init__(certificate)
+    def __init__(self, expires):
+        self.expires = expires
 
     def do_execute(self):
-        return check_not_expired(self.certificate.expires)
+        if not self.expires:
+            return True
+        # compare to current time. If expires_date is timezone naive, we assume UTC
+        now_tz = pytz.UTC.localize(datetime.utcnow())
+        return now_tz < self.expires
 
 
-class SignatureChecker(VerificationCheck):
-    def __init__(self, certificate, issuer_info, chain=Chain.mainnet):
-        super(SignatureChecker, self).__init__(certificate, issuer_info=issuer_info)
+class EmbeddedSignatureChecker(VerificationCheck):
+    def __init__(self, signing_key, content_to_verify, signature_value, chain=Chain.mainnet):
+        self.signing_key = signing_key
+        self.content_to_verify = content_to_verify
+        self.signature_value = signature_value
         self.chain = chain
 
     def do_execute(self):
-        return check_signature(self.issuer_info.signing_key, self.certificate.uid,
-                               self.certificate.blockcert_signature.signature_value, self.chain)
+
+        if self.signing_key is None or self.content_to_verify is None or self.signature_value is None:
+            return False
+        message = BitcoinMessage(self.content_to_verify)
+        try:
+            lock.acquire()
+            # obtain lock while modifying global state
+            bitcoin.SelectParams(self.chain.name)
+            return VerifyMessage(self.signing_key, message, self.signature_value)
+        finally:
+            lock.release()
 
 
-class SignatureCheckerV2(VerificationCheck):
-    def __init__(self, certificate, issuer_info, chain=Chain.mainnet):
-        super(SignatureCheckerV2, self).__init__(certificate, issuer_info=issuer_info)
-        self.chain = chain
+class AuthenticityChecker(VerificationCheck):
+    """
+    Was transaction signing key valid at transaction signing date?
+      - valid means: signing key claimed by issuer + date range (revocation info, etc)
+    """
+
+    def __init__(self, transaction_signing_key, transaction_signing_date, issuer_key_map):
+        self.transaction_signing_key = transaction_signing_key
+        self.transaction_signing_date = transaction_signing_date
+        self.issuer_key_map = issuer_key_map
 
     def do_execute(self):
-        # import copy
-        # certificate_json_copy = copy.deepcopy(self.certificate.certificate_json)
-        # del certificate_json_copy['signature']
-        # normalized = jsonld.normalize(certificate_json_copy, options=JSONLD_OPTIONS)
-
-        # return check_signature(self.issuer_info.signing_key, normalized,
-        #                       self.certificate.blockcert_signature.signature_value, self.chain)
-        signed_json = self.certificate.certificate_json
-        options = SignatureOptions(signed_json['signature']['created'], signed_json['signature']['creator'])
-        return signatures.verify(signed_json, options, self.chain.name)
-
-
-def hash_normalized(normalized):
-    encoded = normalized.encode('utf-8')
-    return hashlib.sha256(encoded).hexdigest()
+        if self.transaction_signing_key in self.issuer_key_map:
+            key = self.issuer_key_map[self.transaction_signing_key]
+            res = True
+            if key.created:
+                res &= self.transaction_signing_date >= key.created
+            if key.revoked:
+                res &= self.transaction_signing_date <= key.revoked
+            if key.expires:
+                res &= self.transaction_signing_date <= key.expires
+            return res
+        else:
+            return False
 
 
-def hashes_match(actual_hash, expected_hash):
-    return actual_hash in expected_hash or actual_hash == expected_hash
+# Verification group creators
+
+def create_embedded_signature_verification_group(signatures, transaction_info, chain):
+    signature_check = None
+    for s in signatures:
+        if s.signature_type == SignatureType.signed_content:
+            signature_check = EmbeddedSignatureChecker(transaction_info.signing_key, s.content_to_verify,
+                                                       s.signature_value, chain)
+            break
+
+    return VerificationGroup(steps=[signature_check], name='Checking issuer signature')
 
 
-def check_signature(signing_key, message, signature, chain):
-    if signing_key is None or message is None or signature is None:
-        return False
-    message = BitcoinMessage(message)
-    try:
-        lock.acquire()
-        # obtain lock while modifying global state
-        bitcoin.SelectParams(chain.name)
-        return VerifyMessage(signing_key, message, signature)
-    finally:
-        lock.release()
+def create_anchored_data_verification_group(signatures, transaction_info, detect_unmapped_fields=False):
+    anchored_data_verification = None
+    for s in signatures:
+        if s.signature_type == SignatureType.signed_transaction:
+            if s.merkle_proof:
+                anchored_data_verification = VerificationGroup(
+                    steps=[ReceiptIntegrityChecker(s.merkle_proof.chainpoint_proof),
+                           NormalizedJsonLdIntegrityChecker(s.content_to_verify, s.merkle_proof.target_hash,
+                                                            detect_unmapped_fields=detect_unmapped_fields),
+                           MerkleRootIntegrityChecker(s.merkle_proof.merkle_root, transaction_info.op_return)],
+                    name='Checking certificate has not been tampered with')
+            else:
+                anchored_data_verification = VerificationGroup(
+                    steps=[BinaryFileIntegrityChecker(s.content_to_verify, transaction_info)],
+                    name='Checking certificate has not been tampered with')
+
+            break
+    return anchored_data_verification
 
 
-def check_not_expired(expiration_date):
-    if not expiration_date:
-        return True
-    # compare to current time. If expires_date is timezone naive, we assume UTC
-    now_tz = pytz.UTC.localize(datetime.utcnow())
-    return now_tz < expiration_date
+def create_revocation_verification_group(certificate_model, issuer_info, transaction_info):
+    revocation_type = certificate_model.revocation_technique.revocation_type
+    if revocation_type:
+        # TODO: v1 issuer_info.revocation_address
+        if revocation_type == RevocationType.spend_to_revoke:
+            revocation_check = RevocationChecker(certificate_model.revocation_technique.keys_to_check,
+                                                 transaction_info.revoked_addresses)
+        elif revocation_type == RevocationType.hosted_url_revoke:
+            revocation_check = RevocationChecker([certificate_model.uid], issuer_info.revoked_assertions)
+        else:
+            raise InvalidCertificateError('unknown revocation type')
+    else:
+        revocation_check = NoopChecker()
+
+    return VerificationGroup(steps=[revocation_check], name='Checking not revoked by issuer')
+
+
+def create_verification_steps(certificate_model, transaction_info, issuer_info, chain):
+    steps = []
+
+    # embedded signature: V1.1. and V1.2 must have this
+    if certificate_model.version != BlockcertVersion.V2:
+        embedded_signature_group = create_embedded_signature_verification_group(certificate_model.signatures,
+                                                                                transaction_info, chain)
+        if not embedded_signature_group:
+            raise InvalidCertificateError('Did not find signature verification info in certificate')
+        steps.append(embedded_signature_group)
+
+    # transaction-anchored data. All versions must have this. In V2 we add an extra check for unmapped fields
+    detect_unmapped_fields = certificate_model.version == BlockcertVersion.V2
+    transaction_signature_group = create_anchored_data_verification_group(certificate_model.signatures,
+                                                                          transaction_info, detect_unmapped_fields)
+    if not transaction_signature_group:
+        raise InvalidCertificateError('Did not find transaction verification info in certificate')
+    steps.append(transaction_signature_group)
+
+    # expiration check. All versions have this as an option.
+    expired_group = ExpiredChecker(certificate_model.expires)
+    steps.append(VerificationGroup(steps=[expired_group],
+                                   name='Checking certificate has not expired'))
+
+    # revocation check. All versions have this
+    revocation_group = create_revocation_verification_group(certificate_model, issuer_info, transaction_info)
+    steps.append(revocation_group)
+
+    # authenticity check
+    key_map = {k.public_key: k for k in issuer_info.issuer_keys}
+    authenticity_checker = AuthenticityChecker(transaction_info.signing_key, transaction_info.date_time_utc, key_map)
+    steps.append(VerificationGroup(steps=[authenticity_checker],
+                                   name='Checking authenticity'))
+
+    return VerificationGroup(steps=steps, name='Validation')

@@ -5,8 +5,12 @@ Connectors supporting Bitcoin transaction lookups. This is used in the Blockchai
 import logging
 
 import requests
+from cert_core import BlockcertVersion
 from cert_core import Chain
+from cert_core import PUBKEY_PREFIX
+from cert_core.model import V2_REGEX
 
+from cert_verifier import IssuerInfo, IssuerKey
 from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
@@ -81,6 +85,7 @@ class BlockchainInfoConnector(TransactionLookupConnector):
     def parse_tx(self, json_response):
         revoked = set()
         script = None
+        signing_key = json_response['inputs'][0]['prev_out']['addr']
         for o in json_response['out']:
             if int(o.get('value', 1)) == 0:
                 script = o['script'][4:]
@@ -90,7 +95,7 @@ class BlockchainInfoConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(script, None, revoked)
+        return TransactionData(signing_key, script, None, revoked)
 
 
 class BlockrIOConnector(TransactionLookupConnector):
@@ -107,6 +112,7 @@ class BlockrIOConnector(TransactionLookupConnector):
         revoked = set()
         script = None
         time = json_response['data']['time_utc']
+        signing_key = json_response['data']['vins'][0]['address']
         for o in json_response['data']['vouts']:
             if float(o.get('amount', 1)) == 0:
                 if not 'extras' in o:
@@ -119,7 +125,7 @@ class BlockrIOConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script')
-        return TransactionData(script, time, revoked)
+        return TransactionData(signing_key, script, time, revoked)
 
 
 class BlockcypherConnector(TransactionLookupConnector):
@@ -141,6 +147,7 @@ class BlockcypherConnector(TransactionLookupConnector):
         revoked = set()
         script = None
         time = json_response['received']
+        signing_key = json_response['inputs'][0]['addresses'][0]
         for o in json_response['outputs']:
             if float(o.get('value', 1)) == 0:
                 script = o['data_hex']
@@ -150,4 +157,57 @@ class BlockcypherConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(script, time, revoked)
+        return TransactionData(signing_key, script, time, revoked)
+
+
+def get_remote_json(the_url):
+    r = requests.get(the_url)
+    if r.status_code != 200:
+        logging.error('Error looking up url=%s, status_code=%d', the_url, r.status_code)
+        return None
+    else:
+        remote_json = r.json()
+        logging.debug('Found results at url=%s', the_url)
+        return remote_json
+
+
+def get_field_or_default(data, field_name):
+    if field_name in data:
+        return data[field_name]
+    else:
+        return None
+
+
+def get_issuer_info(certificate_model):
+    issuer_json = get_remote_json(certificate_model.issuer_id)
+    if not issuer_json:
+        raise Exception('Issuer URL returned no results ' + certificate_model.issuer_id)
+
+    revoked_assertions = []
+    if certificate_model.version == BlockcertVersion.V2:
+        revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
+        revoked_json = get_remote_json(revocation_url)
+        if revoked_json and revoked_json['revokedAssertions']:
+            revoked_assertions = [V2_REGEX.search(r['id']).group(0) for r in revoked_json['revokedAssertions']]
+
+    issuer_keys = []
+
+    if '@context' in issuer_json:
+        for public_key in issuer_json['publicKeys']:
+            pk = public_key['publicKey'][len(PUBKEY_PREFIX):]
+
+            created = get_field_or_default(public_key, 'created')
+            expires = get_field_or_default(public_key, 'expires')
+            revoked = get_field_or_default(public_key, 'revoked')
+            issuer_keys.append(IssuerKey(pk, created, expires, revoked))
+        return IssuerInfo(issuer_keys, revoked_assertions=revoked_assertions)
+    else:
+        # V1 issuer format
+        issuer_key = IssuerKey(issuer_json['issuerKeys'][0]['key'])
+        if revoked_assertions:
+            # this is a v2 certificate with legacy issuer format
+            return IssuerInfo([issuer_key], revoked_assertions=revoked_assertions)
+        else:
+            revocation_key = IssuerKey(issuer_json['revocationKeys'][0]['key'])
+            issuer_info = IssuerInfo([issuer_key], revocation_keys=[revocation_key])
+            return issuer_info

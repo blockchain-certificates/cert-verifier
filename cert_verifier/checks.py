@@ -9,7 +9,7 @@ import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
 from cert_core import BlockcertVersion
 from cert_core import Chain
-from cert_core.model import SignatureType, RevocationType
+from cert_core.model import SignatureType
 from cert_schema import BlockcertValidationError
 from cert_schema import jsonld_document_loader
 from cert_schema import normalize_jsonld
@@ -261,16 +261,11 @@ def create_anchored_data_verification_group(signatures, transaction_info, detect
 
 
 def create_revocation_verification_group(certificate_model, issuer_info, transaction_info):
-    revocation_type = certificate_model.revocation_technique.revocation_type
-    if revocation_type:
-        # TODO: v1 issuer_info.revocation_address
-        if revocation_type == RevocationType.spend_to_revoke:
-            revocation_check = RevocationChecker(certificate_model.revocation_technique.keys_to_check,
-                                                 transaction_info.revoked_addresses)
-        elif revocation_type == RevocationType.hosted_url_revoke:
-            revocation_check = RevocationChecker([certificate_model.uid], issuer_info.revoked_assertions)
-        else:
-            raise InvalidCertificateError('unknown revocation type')
+    if issuer_info.revocation_keys:
+        revocation_check = RevocationChecker(certificate_model.revocation_addresses,
+                                             transaction_info.revoked_addresses)
+    elif issuer_info.revoked_assertions:
+        revocation_check = RevocationChecker([certificate_model.uid], issuer_info.revoked_assertions)
     else:
         revocation_check = NoopChecker()
 

@@ -52,9 +52,12 @@ def verify_certificate_file(certificate_file_name, transaction_id=None):
 
 if __name__ == "__main__":
     # This one is revoked and should fail
-    result = verify_certificate_file('../tests/data/2.0/d4d08ae3-6d8c-489d-be60-cbffc783f43f.json')
-    print(result)
+    #result = verify_certificate_file('../tests/data/2.0/d4d08ae3-6d8c-489d-be60-cbffc783f43f.json')
+    #print(result)
 
     # This one should pass
-    result = verify_certificate_file('../tests/data/2.0/ee098d8e-c8c1-4ff0-b38a-8d868f1daa8e.json')
+    #result = verify_certificate_file('../tests/data/2.0/ee098d8e-c8c1-4ff0-b38a-8d868f1daa8e.json')
+    #print(result)
+
+    result = verify_certificate_file('../1f153f66-6a15-44be-a498-83de0134a5df.json')
     print(result)

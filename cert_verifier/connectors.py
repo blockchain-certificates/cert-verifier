@@ -179,16 +179,18 @@ def get_field_or_default(data, field_name):
 
 
 def get_issuer_info(certificate_model):
-    issuer_json = get_remote_json(certificate_model.issuer_id)
+    issuer_json = get_remote_json(certificate_model.issuer.id)
     if not issuer_json:
         raise Exception('Issuer URL returned no results ' + certificate_model.issuer_id)
 
+    # we use the revocation list in the certificate
     revoked_assertions = []
     if certificate_model.version == BlockcertVersion.V2:
-        revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
-        revoked_json = get_remote_json(revocation_url)
-        if revoked_json and revoked_json['revokedAssertions']:
-            revoked_assertions = [V2_REGEX.search(r['id']).group(0) for r in revoked_json['revokedAssertions']]
+        if 'revocationList' in certificate_model.certificate_json['badge']['issuer']:
+            revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
+            revoked_json = get_remote_json(revocation_url)
+            if revoked_json and revoked_json['revokedAssertions']:
+                revoked_assertions = [V2_REGEX.search(r['id']).group(0) for r in revoked_json['revokedAssertions']]
 
     issuer_keys = []
 

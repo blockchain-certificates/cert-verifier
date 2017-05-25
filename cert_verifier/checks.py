@@ -152,6 +152,10 @@ class ReceiptIntegrityChecker(VerificationCheck):
 
 
 class NoopChecker(VerificationCheck):
+
+    def __init__(self):
+        pass
+
     def do_execute(self):
         return True
 

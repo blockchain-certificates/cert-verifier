@@ -1,4 +1,4 @@
-cert-schema==2.0b15
+cert-schema==2.0b18
 chainpoint==0.0.2
 docopt>=0.4.0
 enum34>=1.1.6
@@ -10,4 +10,4 @@ python-bitcoinlib>=0.7.0
 python-dateutil>=2.5.3
 pytz>=2016.7
 requests>=2.18.1
-tox>=2.3.1
+tox>=2.7.0

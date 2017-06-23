@@ -39,34 +39,38 @@ class TestVerify(unittest.TestCase):
                                                   '1703d2f5d706d495c1c65b40a086991ab755cc0a02bef51cd4aff9ed7a8586aa')
         self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2(self):
-        result = verifier.verify_certificate_file('data/2.0/valid.json')
+    def test_verify_cert_file_v2_alpha(self):
+        result = verifier.verify_certificate_file('data/2.0-alpha/valid.json')
         self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2_with_v1_issuer(self):
-        result = verifier.verify_certificate_file('data/2.0/valid_v2_certificate_with_v1_issuer.json')
+    def test_verify_cert_file_v2_alpha_with_v1_issuer(self):
+        result = verifier.verify_certificate_file('data/2.0-alpha/valid_v2_certificate_with_v1_issuer.json')
         self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2_tampered(self):
-        result = verifier.verify_certificate_file('data/2.0/invalid_tampered.json')
+    def test_verify_cert_file_v2_alpha_tampered(self):
+        result = verifier.verify_certificate_file('data/2.0-alpha/invalid_tampered.json')
         self.assertEquals(StepStatus.failed.name, result[INTEGRITY_RESULT_INDEX]['status'])
         self.assertEquals(StepStatus.failed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2_tampered_unmapped(self):
-        result = verifier.verify_certificate_file('data/2.0/invalid_unmapped_fields.json')
+    def test_verify_cert_file_v2_alpha_tampered_unmapped(self):
+        result = verifier.verify_certificate_file('data/2.0-alpha/invalid_unmapped_fields.json')
         self.assertEquals(StepStatus.failed.name, result[INTEGRITY_RESULT_INDEX]['status'])
         self.assertEquals(StepStatus.failed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2_revoked(self):
-        result = verifier.verify_certificate_file('data/2.0/invalid_revoked.json')
+    def test_verify_cert_file_v2_alpha_revoked(self):
+        result = verifier.verify_certificate_file('data/2.0-alpha/invalid_revoked.json')
         self.assertEquals(StepStatus.failed.name, result[REVOCATION_RESULT_INDEX]['status'])
         self.assertEquals(StepStatus.failed.name, result[VERIFICATION_RESULT_INDEX]['status'])
         print(result)
 
     def test_verify_cert_file_v2_authenticity_fail(self):
-        result = verifier.verify_certificate_file('data/2.0/invalid_authenticity.json')
+        result = verifier.verify_certificate_file('data/2.0-alpha/invalid_authenticity.json')
         self.assertEquals(StepStatus.failed.name, result[AUTHENTICITY_RESULT_INDEX]['status'])
         self.assertEquals(StepStatus.failed.name, result[VERIFICATION_RESULT_INDEX]['status'])
+
+    def test_verify_cert_file_v2_alpha(self):
+        result = verifier.verify_certificate_file('data/2.0/valid.json')
+        self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
 if __name__ == '__main__':
     unittest.main()

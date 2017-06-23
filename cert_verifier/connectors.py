@@ -184,7 +184,8 @@ def get_issuer_info(certificate_model):
 
     # we use the revocation list in the certificate
     revoked_assertions = []
-    if certificate_model.version == BlockcertVersion.V2:
+    v2ish = certificate_model.version == BlockcertVersion.V2 or certificate_model.version == BlockcertVersion.V2_ALPHA
+    if v2ish:
         if 'revocationList' in certificate_model.certificate_json['badge']['issuer']:
             revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
             revoked_json = get_remote_json(revocation_url)
@@ -194,13 +195,22 @@ def get_issuer_info(certificate_model):
     issuer_keys = []
 
     if '@context' in issuer_json:
-        for public_key in issuer_json['publicKeys']:
-            pk = public_key['publicKey'][len(PUBKEY_PREFIX):]
+        if 'publicKey' in issuer_json:
+            for public_key in issuer_json['publicKey']:
+                pk = public_key['@id'][len(PUBKEY_PREFIX):]
+                created = get_field_or_default(public_key, 'created')
+                expires = get_field_or_default(public_key, 'expires')
+                revoked = get_field_or_default(public_key, 'revoked')
+                issuer_keys.append(IssuerKey(pk, created, expires, revoked))
+        # Backcompat for v2 alpha issuer
+        elif 'publicKeys' in issuer_json:
+            for public_key in issuer_json['publicKeys']:
+                pk = public_key['publicKey'][len(PUBKEY_PREFIX):]
 
-            created = get_field_or_default(public_key, 'created')
-            expires = get_field_or_default(public_key, 'expires')
-            revoked = get_field_or_default(public_key, 'revoked')
-            issuer_keys.append(IssuerKey(pk, created, expires, revoked))
+                created = get_field_or_default(public_key, 'created')
+                expires = get_field_or_default(public_key, 'expires')
+                revoked = get_field_or_default(public_key, 'revoked')
+                issuer_keys.append(IssuerKey(pk, created, expires, revoked))
         return IssuerInfo(issuer_keys, revoked_assertions=revoked_assertions)
     else:
         # V1 issuer format

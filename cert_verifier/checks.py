@@ -265,8 +265,10 @@ def create_revocation_verification_group(certificate_model, issuer_info, transac
 def create_verification_steps(certificate_model, transaction_info, issuer_info, chain):
     steps = []
 
+    v2ish = certificate_model.version == BlockcertVersion.V2 or certificate_model.version == BlockcertVersion.V2_ALPHA
+
     # embedded signature: V1.1. and V1.2 must have this
-    if certificate_model.version != BlockcertVersion.V2:
+    if not v2ish:
         embedded_signature_group = create_embedded_signature_verification_group(certificate_model.signatures,
                                                                                 transaction_info, chain)
         if not embedded_signature_group:
@@ -274,7 +276,7 @@ def create_verification_steps(certificate_model, transaction_info, issuer_info, 
         steps.append(embedded_signature_group)
 
     # transaction-anchored data. All versions must have this. In V2 we add an extra check for unmapped fields
-    detect_unmapped_fields = certificate_model.version == BlockcertVersion.V2
+    detect_unmapped_fields = v2ish
     transaction_signature_group = create_anchored_data_verification_group(certificate_model.signatures,
                                                                           transaction_info, detect_unmapped_fields)
     if not transaction_signature_group:

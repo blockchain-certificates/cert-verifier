@@ -1,6 +1,6 @@
 import unittest
 
-from cert_core import model
+from cert_schema import model
 from mock import Mock
 
 from cert_verifier.checks import *

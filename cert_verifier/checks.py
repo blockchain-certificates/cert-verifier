@@ -1,36 +1,23 @@
-import hashlib
 import json
 import logging
 from datetime import datetime
 from threading import Lock
 
 import bitcoin
+import hashlib
 import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
-from cert_core import BlockcertVersion
-from cert_core import Chain
-from cert_core.model import SignatureType
 from cert_schema import BlockcertValidationError
-from cert_schema import jsonld_document_loader
+from cert_schema import BlockcertVersion
+from cert_schema import Chain
 from cert_schema import normalize_jsonld
+from cert_schema.model import SignatureType
 from chainpoint.chainpoint import Chainpoint
-from werkzeug.contrib.cache import SimpleCache
 
 from cert_verifier import StepStatus
 from cert_verifier.errors import InvalidCertificateError
 
-cache = SimpleCache()
 lock = Lock()
-
-
-def cached_document_loader(url, override_cache=False):
-    if not override_cache:
-        result = cache.get(url)
-        if result:
-            return result
-    doc = jsonld_document_loader(url)
-    cache.set(url, doc)
-    return doc
 
 
 def hash_normalized(normalized):
@@ -120,7 +107,7 @@ class NormalizedJsonLdIntegrityChecker(VerificationCheck):
 
     def do_execute(self):
         try:
-            normalized = normalize_jsonld(self.content_to_verify, document_loader=cached_document_loader,
+            normalized = normalize_jsonld(self.content_to_verify,
                                           detect_unmapped_fields=self.detect_unmapped_fields)
             local_hash = hash_normalized(normalized)
             cert_hashes_match = hashes_match(local_hash, self.expected_hash)
@@ -152,7 +139,6 @@ class ReceiptIntegrityChecker(VerificationCheck):
 
 
 class NoopChecker(VerificationCheck):
-
     def __init__(self):
         pass
 

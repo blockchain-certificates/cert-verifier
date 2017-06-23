@@ -5,10 +5,9 @@ Connectors supporting Bitcoin transaction lookups. This is used in the Blockchai
 import logging
 
 import requests
-from cert_core import BlockcertVersion
-from cert_core import Chain
-from cert_core import PUBKEY_PREFIX
-from cert_core.model import V2_REGEX
+from cert_schema import BlockcertVersion
+from cert_schema import Chain
+from cert_schema import PUBKEY_PREFIX
 
 from cert_verifier import IssuerInfo, IssuerKey
 from cert_verifier import TransactionData
@@ -190,7 +189,7 @@ def get_issuer_info(certificate_model):
             revocation_url = certificate_model.certificate_json['badge']['issuer']['revocationList']
             revoked_json = get_remote_json(revocation_url)
             if revoked_json and revoked_json['revokedAssertions']:
-                revoked_assertions = [V2_REGEX.search(r['id']).group(0) for r in revoked_json['revokedAssertions']]
+                revoked_assertions = [r['id'] for r in revoked_json['revokedAssertions']]
 
     issuer_keys = []
 

@@ -8,9 +8,9 @@ Library for verifying blockchain certificates.
 
 The most common way to use this is to add the [latest cert-verifier pypi package](https://badge.fury.io/py/cert-verifier) to your project dependencies. 
 
-## Running the CLI locally
+## Verify a certificate by command line
 
-1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/developer-common-docs/blob/master/virtualenv.md)
+1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/cert-issuer/blob/master/docs/virtualenv.md)
 
 2. Git clone the repository and change to the directory
 
@@ -35,7 +35,7 @@ The most common way to use this is to add the [latest cert-verifier pypi package
 
 This project uses tox to validate against several python environments.
 
-1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/developer-common-docs/blob/master/virtualenv.md)
+1. Ensure you have an python environment. [Recommendations](https://github.com/blockchain-certificates/cert-issuer/blob/master/docs/virtualenv.md)
 
 2. Run tests
     ```

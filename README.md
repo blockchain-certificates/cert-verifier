@@ -30,6 +30,10 @@ The most common way to use this is to add the [latest cert-verifier pypi package
   cd cert_verifier
   python verifier.py
   ```
+  
+## Verification process
+
+[Read about how Blockcerts verification works](https://github.com/blockchain-certificates/cert-verifier-js#verification-process)
 
 ## Unit tests
 

@@ -7,6 +7,7 @@ from cert_verifier.checks import *
 
 
 class TestVerify(unittest.TestCase):
+
     def test_compare_hashes_v1_1(self):
         content_to_verify = '{"abc123": true}'.encode('utf-8')
         mock_transaction = Mock()

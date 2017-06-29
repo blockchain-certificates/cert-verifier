@@ -197,7 +197,7 @@ def get_issuer_info(certificate_model):
     if '@context' in issuer_json:
         if 'publicKey' in issuer_json:
             for public_key in issuer_json['publicKey']:
-                pk = public_key['@id'][len(PUBKEY_PREFIX):]
+                pk = public_key['id'][len(PUBKEY_PREFIX):]
                 created = get_field_or_default(public_key, 'created')
                 expires = get_field_or_default(public_key, 'expires')
                 revoked = get_field_or_default(public_key, 'revoked')

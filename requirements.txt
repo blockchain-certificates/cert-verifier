@@ -1,6 +1,6 @@
-cert-schema==2.0
+cert-schema>=2.0.1
 chainpoint==0.0.2
-enum34>=1.1.6
+enum34>=1.1.6;python_version<"3.5"
 functional>=0.4
 mock>=2.0.0
 pyld>=0.7.2

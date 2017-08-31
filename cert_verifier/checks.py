@@ -129,12 +129,14 @@ class MerkleRootIntegrityChecker(VerificationCheck):
 
 
 class ReceiptIntegrityChecker(VerificationCheck):
-    def __init__(self, chainpoint_proof):
-        self.chainpoint_proof = chainpoint_proof
+    def __init__(self, merkle_proof):
+        self.merkle_proof = merkle_proof
 
     def do_execute(self):
         cp = Chainpoint()
-        valid_receipt = cp.valid_receipt(json.dumps(self.chainpoint_proof))
+        # overwrite with Chainpoint type before passing to validator
+        self.merkle_proof['type'] = 'ChainpointSHA256v2'
+        valid_receipt = cp.valid_receipt(json.dumps(self.merkle_proof))
         return valid_receipt
 
 
@@ -236,7 +238,7 @@ def create_anchored_data_verification_group(signatures, transaction_info, detect
         if s.signature_type == SignatureType.signed_transaction:
             if s.merkle_proof:
                 anchored_data_verification = VerificationGroup(
-                    steps=[ReceiptIntegrityChecker(s.merkle_proof.chainpoint_proof),
+                    steps=[ReceiptIntegrityChecker(s.merkle_proof.proof_json),
                            NormalizedJsonLdIntegrityChecker(s.content_to_verify, s.merkle_proof.target_hash,
                                                             detect_unmapped_fields=detect_unmapped_fields),
                            MerkleRootIntegrityChecker(s.merkle_proof.merkle_root, transaction_info.op_return)],

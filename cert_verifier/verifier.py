@@ -53,5 +53,5 @@ def verify_certificate_file(certificate_file_name, transaction_id=None):
 if __name__ == "__main__":
 
     # This one should pass
-    result = verify_certificate_file('../sample.json')
+    result = verify_certificate_file('../tests/data/2.0/valid.json')
     print(result)

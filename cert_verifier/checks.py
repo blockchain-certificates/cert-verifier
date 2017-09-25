@@ -232,16 +232,19 @@ def create_embedded_signature_verification_group(signatures, transaction_info, c
     return VerificationGroup(steps=[signature_check], name='Checking issuer signature')
 
 
-def create_anchored_data_verification_group(signatures, transaction_info, detect_unmapped_fields=False):
+def create_anchored_data_verification_group(signatures, chain, transaction_info, detect_unmapped_fields=False):
     anchored_data_verification = None
     for s in signatures:
         if s.signature_type == SignatureType.signed_transaction:
             if s.merkle_proof:
+                steps = [ReceiptIntegrityChecker(s.merkle_proof.proof_json),
+                         NormalizedJsonLdIntegrityChecker(s.content_to_verify, s.merkle_proof.target_hash,
+                                                          detect_unmapped_fields=detect_unmapped_fields)]
+                if chain != Chain.mocknet and chain != Chain.regtest:
+                    steps.append(MerkleRootIntegrityChecker(s.merkle_proof.merkle_root, transaction_info.op_return))
+
                 anchored_data_verification = VerificationGroup(
-                    steps=[ReceiptIntegrityChecker(s.merkle_proof.proof_json),
-                           NormalizedJsonLdIntegrityChecker(s.content_to_verify, s.merkle_proof.target_hash,
-                                                            detect_unmapped_fields=detect_unmapped_fields),
-                           MerkleRootIntegrityChecker(s.merkle_proof.merkle_root, transaction_info.op_return)],
+                    steps=steps,
                     name='Checking certificate has not been tampered with')
             else:
                 anchored_data_verification = VerificationGroup(
@@ -280,7 +283,9 @@ def create_verification_steps(certificate_model, transaction_info, issuer_info, 
     # transaction-anchored data. All versions must have this. In V2 we add an extra check for unmapped fields
     detect_unmapped_fields = v2ish
     transaction_signature_group = create_anchored_data_verification_group(certificate_model.signatures,
-                                                                          transaction_info, detect_unmapped_fields)
+                                                                          chain,
+                                                                          transaction_info,
+                                                                          detect_unmapped_fields)
     if not transaction_signature_group:
         raise InvalidCertificateError('Did not find transaction verification info in certificate')
     steps.append(transaction_signature_group)
@@ -295,9 +300,12 @@ def create_verification_steps(certificate_model, transaction_info, issuer_info, 
     steps.append(revocation_group)
 
     # authenticity check
-    key_map = {k.public_key: k for k in issuer_info.issuer_keys}
-    authenticity_checker = AuthenticityChecker(transaction_info.signing_key, transaction_info.date_time_utc, key_map)
-    steps.append(VerificationGroup(steps=[authenticity_checker],
-                                   name='Checking authenticity'))
+    if chain != Chain.mocknet and chain != Chain.regtest:
+        key_map = {k.public_key: k for k in issuer_info.issuer_keys}
+        authenticity_checker = AuthenticityChecker(transaction_info.signing_key, transaction_info.date_time_utc, key_map)
+        steps.append(VerificationGroup(steps=[authenticity_checker],
+                                       name='Checking authenticity'))
 
+    if chain == Chain.mocknet or chain == Chain.regtest:
+        return VerificationGroup(steps=steps, name='Validation', success_status=StepStatus.mock_passed)
     return VerificationGroup(steps=steps, name='Validation')

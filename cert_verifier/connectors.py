@@ -19,6 +19,8 @@ def createTransactionLookupConnector(chain=Chain.mainnet):
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
+    if chain == Chain.mocknet or chain == Chain.regtest:
+        return MockConnector(chain)
     return FallbackConnector(chain)
 
 
@@ -51,6 +53,13 @@ class TransactionLookupConnector:
         """
         return None
 
+
+class MockConnector(TransactionLookupConnector):
+    def __init__(self, chain):
+        self.chain = chain
+
+    def lookup_tx(self, txid):
+        return True
 
 class FallbackConnector(TransactionLookupConnector):
     def __init__(self, chain):
@@ -180,7 +189,7 @@ def get_field_or_default(data, field_name):
 def get_issuer_info(certificate_model):
     issuer_json = get_remote_json(certificate_model.issuer.id)
     if not issuer_json:
-        raise Exception('Issuer URL returned no results ' + certificate_model.issuer_id)
+        raise Exception('Issuer URL returned no results ' + certificate_model.issuer.id)
 
     # we use the revocation list in the certificate
     revoked_assertions = []

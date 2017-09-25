@@ -1,4 +1,4 @@
-cert-schema>=2.0.3
+cert-schema>=2.0.4
 chainpoint==0.0.2
 enum34>=1.1.6;python_version<"3.5"
 functional>=0.4

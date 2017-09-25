@@ -20,13 +20,22 @@ from cert_verifier import connectors
 from cert_verifier.checks import create_verification_steps
 
 
-def to_chain(anchor_type, address):
+def get_chain(certificate_model, issuer_info):
     """
     Converts the anchor type in the Blockcert signature to a Chain. In next version of Blockcerts schema we will be able
     to write XTNOpReturn for testnet
     :param chain:
     :return:
     """
+
+    anchor = next(sig for sig in certificate_model.signatures if isinstance(sig, TransactionSignature))
+    if anchor and anchor.merkle_proof:
+        # choose first anchor type because there is only 1
+        anchor_type = anchor.merkle_proof.proof_json['anchors'][0]['type']
+    else:
+        # pre-v1.2 backcompat
+        anchor_type = "BTCOpReturn"
+    address = issuer_info.issuer_keys[0].public_key
 
     if anchor_type == 'REGOpReturn':
         return Chain.regtest
@@ -45,17 +54,9 @@ def to_chain(anchor_type, address):
 def verify_certificate(certificate_model):
     # lookup issuer-hosted information
     issuer_info = connectors.get_issuer_info(certificate_model)
+    chain = get_chain(certificate_model, issuer_info)
 
-    anchor = next(sig for sig in certificate_model.signatures if isinstance(sig, TransactionSignature))
-    if anchor and anchor.merkle_proof:
-        # choose first anchor type because there is only 1
-        anchor_type = anchor.merkle_proof.proof_json['anchors'][0]['type']
-    else:
-        # pre-v1.2 backcompat
-        anchor_type = "BTCOpReturn"
-    chain = to_chain(anchor_type, issuer_info.issuer_keys[0].public_key)
     # lookup transaction information
-
     connector = connectors.createTransactionLookupConnector(chain)
     transaction_info = connector.lookup_tx(certificate_model.txid)
 

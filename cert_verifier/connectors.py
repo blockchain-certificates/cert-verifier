@@ -14,12 +14,12 @@ from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
 
-def createTransactionLookupConnector(chain=Chain.mainnet):
+def createTransactionLookupConnector(chain=Chain.bitcoin_mainnet):
     """
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
-    if chain == Chain.mocknet or chain == Chain.regtest:
+    if chain == Chain.mockchain or chain == Chain.bitcoin_regtest:
         return MockConnector(chain)
     return FallbackConnector(chain)
 
@@ -85,8 +85,8 @@ class BlockchainInfoConnector(TransactionLookupConnector):
     connector.
     """
 
-    def __init__(self, chain=Chain.mainnet):
-        if chain != Chain.mainnet:
+    def __init__(self, chain=Chain.bitcoin_mainnet):
+        if chain != Chain.bitcoin_mainnet:
             raise Exception('only mainnet chain is supported with blockchain.info collector')
         self.url = 'https://blockchain.info/rawtx/%s?cors=true'
 
@@ -108,9 +108,9 @@ class BlockchainInfoConnector(TransactionLookupConnector):
 
 class BlockrIOConnector(TransactionLookupConnector):
     def __init__(self, chain):
-        if chain == Chain.testnet:
+        if chain == Chain.bitcoin_testnet:
             self.url = 'https://tbtc.blockr.io/api/v1/tx/info/%s'
-        elif chain == Chain.mainnet:
+        elif chain == Chain.bitcoin_mainnet:
             self.url = 'https://btc.blockr.io/api/v1/tx/info/%s'
         else:
             raise Exception(
@@ -143,9 +143,9 @@ class BlockcypherConnector(TransactionLookupConnector):
     """
 
     def __init__(self, chain):
-        if chain == Chain.testnet:
+        if chain == Chain.bitcoin_testnet:
             self.url = 'http://api.blockcypher.com/v1/btc/test3/txs/%s?limit=100'
-        elif chain == Chain.mainnet:
+        elif chain == Chain.bitcoin_mainnet:
             self.url = 'https://api.blockcypher.com/v1/btc/main/txs/%s?limit=100'
         else:
             raise Exception(

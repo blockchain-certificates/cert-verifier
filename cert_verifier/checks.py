@@ -9,7 +9,7 @@ import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
 from cert_schema import BlockcertValidationError
 from cert_schema import BlockcertVersion
-from cert_schema import Chain
+from cert_schema import Chain, chain_to_bitcoin_network
 from cert_schema import normalize_jsonld
 from cert_schema.model import SignatureType
 from chainpoint.chainpoint import Chainpoint
@@ -173,7 +173,7 @@ class ExpiredChecker(VerificationCheck):
 
 
 class EmbeddedSignatureChecker(VerificationCheck):
-    def __init__(self, signing_key, content_to_verify, signature_value, chain=Chain.mainnet):
+    def __init__(self, signing_key, content_to_verify, signature_value, chain=Chain.bitcoin_mainnet):
         self.signing_key = signing_key
         self.content_to_verify = content_to_verify
         self.signature_value = signature_value
@@ -187,7 +187,7 @@ class EmbeddedSignatureChecker(VerificationCheck):
         try:
             lock.acquire()
             # obtain lock while modifying global state
-            bitcoin.SelectParams(self.chain.name)
+            bitcoin.SelectParams(chain_to_bitcoin_network(self.chain))
             return VerifyMessage(self.signing_key, message, self.signature_value)
         finally:
             lock.release()
@@ -240,7 +240,7 @@ def create_anchored_data_verification_group(signatures, chain, transaction_info,
                 steps = [ReceiptIntegrityChecker(s.merkle_proof.proof_json),
                          NormalizedJsonLdIntegrityChecker(s.content_to_verify, s.merkle_proof.target_hash,
                                                           detect_unmapped_fields=detect_unmapped_fields)]
-                if chain != Chain.mocknet and chain != Chain.regtest:
+                if chain != Chain.mockchain and chain != Chain.bitcoin_regtest:
                     steps.append(MerkleRootIntegrityChecker(s.merkle_proof.merkle_root, transaction_info.op_return))
 
                 anchored_data_verification = VerificationGroup(
@@ -300,12 +300,13 @@ def create_verification_steps(certificate_model, transaction_info, issuer_info, 
     steps.append(revocation_group)
 
     # authenticity check
-    if chain != Chain.mocknet and chain != Chain.regtest:
+    if chain != Chain.mockchain and chain != Chain.bitcoin_regtest:
         key_map = {k.public_key: k for k in issuer_info.issuer_keys}
-        authenticity_checker = AuthenticityChecker(transaction_info.signing_key, transaction_info.date_time_utc, key_map)
+        authenticity_checker = AuthenticityChecker(transaction_info.signing_key, transaction_info.date_time_utc,
+                                                   key_map)
         steps.append(VerificationGroup(steps=[authenticity_checker],
                                        name='Checking authenticity'))
 
-    if chain == Chain.mocknet or chain == Chain.regtest:
+    if chain == Chain.mockchain or chain == Chain.bitcoin_regtest:
         return VerificationGroup(steps=steps, name='Validation', success_status=StepStatus.mock_passed)
     return VerificationGroup(steps=steps, name='Validation')

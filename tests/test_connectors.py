@@ -49,7 +49,7 @@ class TestConnectors(unittest.TestCase):
     def test_blockchain_info_parsing(self):
         with open('data/transaction_responses/blockchain_info.json') as trx_file:
             trx_json = json.load(trx_file)
-            connector = BlockchainInfoConnector(chain=Chain.mainnet)
+            connector = BlockchainInfoConnector(chain=Chain.bitcoin_mainnet)
             data = connector.parse_tx(trx_json)
             self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(0, len(data.revoked_addresses))
@@ -57,7 +57,7 @@ class TestConnectors(unittest.TestCase):
     def test_blockchain_info_parsing_revoked(self):
         with open('data/transaction_responses/blockchain_info_revoked.json') as trx_file:
             trx_json = json.load(trx_file)
-            connector = BlockchainInfoConnector(chain=Chain.mainnet)
+            connector = BlockchainInfoConnector(chain=Chain.bitcoin_mainnet)
             data = connector.parse_tx(trx_json)
             self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(1, len(data.revoked_addresses))
@@ -66,7 +66,7 @@ class TestConnectors(unittest.TestCase):
     def test_blockcypher_parsing(self):
         with open('data/transaction_responses/blockcypher.json') as trx_file:
             trx_json = json.load(trx_file)
-            connector = BlockcypherConnector(chain=Chain.mainnet)
+            connector = BlockcypherConnector(chain=Chain.bitcoin_mainnet)
             data = connector.parse_tx(trx_json)
             self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(0, len(data.revoked_addresses))
@@ -74,7 +74,7 @@ class TestConnectors(unittest.TestCase):
     def test_blockcypher_parsing_revoked(self):
         with open('data/transaction_responses/blockcypher_revoked.json') as trx_file:
             trx_json = json.load(trx_file)
-            connector = BlockcypherConnector(chain=Chain.mainnet)
+            connector = BlockcypherConnector(chain=Chain.bitcoin_mainnet)
             data = connector.parse_tx(trx_json)
             self.assertEquals(data.op_return, '68f3ede17fdb67ffd4a5164b5687a71f9fbb68da803b803935720f2aa38f7728')
             self.assertEquals(1, len(data.revoked_addresses))
@@ -83,7 +83,7 @@ class TestConnectors(unittest.TestCase):
     def test_blockrio_parsing(self):
         with open('data/transaction_responses/blockrio.json') as trx_file:
             trx_json = json.load(trx_file)
-            connector = BlockrIOConnector(chain=Chain.mainnet)
+            connector = BlockrIOConnector(chain=Chain.bitcoin_mainnet)
             data = connector.parse_tx(trx_json)
             self.assertEquals(data.op_return, '8d18189b12ae315bb3d70c138c78ff76ab5130484187c33d1a9187bc29ca8d30')
             self.assertEquals('mh2B8UhBUAiyPCw6ryB3me4cQen3Nr4m7E', data.signing_key)

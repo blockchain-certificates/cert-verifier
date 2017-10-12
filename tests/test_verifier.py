@@ -68,20 +68,18 @@ class TestVerify(unittest.TestCase):
         self.assertEquals(StepStatus.failed.name, result[AUTHENTICITY_RESULT_INDEX]['status'])
         self.assertEquals(StepStatus.failed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2(self):
-        result = verifier.verify_certificate_file('data/2.0/valid.json')
+    def test_verify_cert_file_v2_testnet(self):
+        result = verifier.verify_certificate_file('data/2.0/testnet.json')
         self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2(self):
+    def test_verify_cert_file_v2_mocknet(self):
         result = verifier.verify_certificate_file('data/2.0/mocknet.json')
         self.assertEquals(StepStatus.mock_passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
+    def test_verify_cert_file_v2_regtest(self):
+        result = verifier.verify_certificate_file('data/2.0/regtest.json')
+        self.assertEquals(StepStatus.mock_passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
-    def test_verify_cert_file_v2(self):
-        pass
-        # TODO!!!!
-        #result = verifier.verify_certificate_file('data/2.0/regtest.json')
-        #self.assertEquals(StepStatus.mock_passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
 if __name__ == '__main__':
     unittest.main()

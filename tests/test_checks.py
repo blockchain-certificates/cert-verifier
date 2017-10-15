@@ -1,6 +1,6 @@
 import unittest
 
-from cert_schema import model
+from cert_core import to_certificate_model
 from mock import Mock
 
 from cert_verifier.checks import *
@@ -64,14 +64,14 @@ class TestVerify(unittest.TestCase):
     def test_verify_expired(self):
         with open('data/1.2/expired.json') as cert_file:
             cert_json = json.load(cert_file)
-            certificate_model = model.to_certificate_model(certificate_json=cert_json)
+            certificate_model = to_certificate_model(certificate_json=cert_json)
         not_expired_checker = ExpiredChecker(certificate_model.expires)
         self.assertFalse(not_expired_checker.do_execute())
 
     def test_not_yet_expired(self):
         with open('data/1.2/not_yet_expired.json') as cert_file:
             cert_json = json.load(cert_file)
-            certificate_model = model.to_certificate_model(certificate_json=cert_json)
+            certificate_model = to_certificate_model(certificate_json=cert_json)
         not_expired_checker = ExpiredChecker(certificate_model.expires)
         self.assertTrue(not_expired_checker.do_execute())
 

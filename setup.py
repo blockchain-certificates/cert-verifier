@@ -14,7 +14,7 @@ with open(os.path.join(here, 'README.md')) as fp:
 
 setup(
     name='cert-verifier',
-    version='2.0.5',
+    version='2.0.7',
     description='Verifies blockchain certificates',
     author='Blockcerts',
     tests_require=['tox'],

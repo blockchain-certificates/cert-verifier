@@ -11,8 +11,7 @@ Overview of verification steps
 """
 import json
 
-from cert_schema import model
-
+from cert_core import to_certificate_model
 from cert_verifier import connectors
 from cert_verifier.checks import create_verification_steps
 
@@ -42,7 +41,7 @@ def verify_certificate_file(certificate_file_name, transaction_id=None):
     with open(certificate_file_name, 'rb') as cert_fp:
         certificate_bytes = cert_fp.read()
         certificate_json = json.loads(certificate_bytes.decode('utf-8'))
-        certificate_model = model.to_certificate_model(certificate_json=certificate_json,
+        certificate_model = to_certificate_model(certificate_json=certificate_json,
                                                        txid=transaction_id,
                                                        certificate_bytes=certificate_bytes)
         result = verify_certificate(certificate_model)

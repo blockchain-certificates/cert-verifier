@@ -5,9 +5,8 @@ Connectors supporting Bitcoin transaction lookups. This is used in the Blockchai
 import logging
 
 import requests
-from cert_schema import BlockcertVersion
-from cert_schema import Chain
-from cert_schema import PUBKEY_PREFIX
+from cert_core import BlockcertVersion, Chain
+from cert_core import PUBKEY_PREFIX
 
 from cert_verifier import IssuerInfo, IssuerKey
 from cert_verifier import TransactionData

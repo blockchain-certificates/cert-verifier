@@ -8,10 +8,10 @@ import hashlib
 import pytz
 from bitcoin.signmessage import BitcoinMessage, VerifyMessage
 from cert_schema import BlockcertValidationError
-from cert_schema import BlockcertVersion
-from cert_schema import Chain, chain_to_bitcoin_network
 from cert_schema import normalize_jsonld
-from cert_schema.model import SignatureType
+from cert_core import BlockcertVersion, Chain
+from cert_core import chain_to_bitcoin_network
+from cert_core.cert_model.model import SignatureType
 from chainpoint.chainpoint import Chainpoint
 
 from cert_verifier import StepStatus

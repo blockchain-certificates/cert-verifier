@@ -5,7 +5,7 @@ Connectors supporting Bitcoin transaction lookups. This is used in the Blockchai
 import logging
 
 import requests
-from cert_core import BlockcertVersion, Chain
+from cert_core import BlockchainType, BlockcertVersion, Chain
 from cert_core import PUBKEY_PREFIX
 
 from cert_verifier import IssuerInfo, IssuerKey
@@ -13,13 +13,19 @@ from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
 
-def createTransactionLookupConnector(chain=Chain.bitcoin_mainnet):
+def createTransactionLookupConnector(chain=Chain.bitcoin_mainnet, options=None):
     """
     :param chain: which chain, supported values are testnet and mainnet
     :return: connector for looking up transactions
     """
     if chain == Chain.mockchain or chain == Chain.bitcoin_regtest:
         return MockConnector(chain)
+    elif chain.blockchain_type == BlockchainType.ethereum:
+        if options and 'etherscan_api_token' in options:
+            etherscan_api_token = options['etherscan_api_token']
+        else:
+            etherscan_api_token = None
+        return EtherscanConnector(chain, etherscan_api_token)
     return FallbackConnector(chain)
 
 
@@ -176,6 +182,57 @@ def get_remote_json(the_url):
         remote_json = r.json()
         logging.debug('Found results at url=%s', the_url)
         return remote_json
+"""
+{
+   "jsonrpc":"2.0",
+   "result":{
+      "blockHash":"0x2902c15778590321b5a14fc574105bb54d1a411e981e476c8ffa8af84ed55189",
+      "blockNumber":"0x1b6b73",
+      "condition":null,
+      "creates":null,
+      "from":"0xfc522b943d068116074c1c36839515fac0aa224e",
+      "gas":"0x61a8",
+      "gasPrice":"0x4a817c800",
+      "hash":"0xd7f7ccdb8de0ece57136696020af60026428234769263eb6ae882b8b7f3a1c96",
+      "input":"0x8438d5be1cb1e8eed22dc510e0154cc896b644521b4dd3ad6f838b884af921ea",
+      "networkId":3,
+      "nonce":"0x1",
+      "publicKey":"0x85fa3aea18d891f716642d6caf772c9cfa38047d578014b96d980cbc1b44e40988a46f72e0765a68d25c7931d2bbe5552278290d32c4612dd5aa6eca8fbadc57",
+      "r":"0x4d9258cb8b4af065049ea2521a4032d617909104b2bb22d7349734c0a56296cb",
+      "raw":"0xf884018504a817c8008261a894deaddeaddeaddeaddeaddeaddeaddeaddeaddead80a08438d5be1cb1e8eed22dc510e0154cc896b644521b4dd3ad6f838b884af921ea29a04d9258cb8b4af065049ea2521a4032d617909104b2bb22d7349734c0a56296cba02ff68fcac79343fcee6eee5303cfa8e98e2b89e9f68a9c920425d40f47493b09",
+      "s":"0x2ff68fcac79343fcee6eee5303cfa8e98e2b89e9f68a9c920425d40f47493b09",
+      "standardV":"0x0",
+      "to":"0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead",
+      "transactionIndex":"0x3",
+      "v":"0x29",
+      "value":"0x0"
+   },
+   "id":1
+}
+"""
+class EtherscanConnector(TransactionLookupConnector):
+
+    def __init__(self, chain, api_key):
+        if chain == Chain.ethereum_mainnet:
+            url_prefix = 'https://api.etherscan.io'
+        elif chain == Chain.ethereum_ropsten:
+            url_prefix = 'https://ropsten.etherscan.io'
+        else:
+            raise Exception(
+                'unsupported chain (%s) requested with Etherscan collector. Currently only mainnet and ropsten are supported' % chain)
+
+        self.url = url_prefix + '/api?module=proxy&action=eth_getTransactionByHash&apikey=' + api_key + '&txhash=%s'
+
+    def parse_tx(self, json_response):
+        # TODO: need time_utc, which we can get from another API
+        #time = json_response['data']['time_utc']
+        signing_key = json_response['result']['from']
+        script = json_response['result']['input']
+
+        if not script:
+            logging.error('transaction response is missing input: %s', json_response)
+            raise InvalidTransactionError('transaction response is missing input')
+        return TransactionData(signing_key, script, date_time_utc=None, revoked_addresses=None)
 
 
 def get_field_or_default(data, field_name):

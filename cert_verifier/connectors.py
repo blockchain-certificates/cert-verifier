@@ -12,6 +12,9 @@ from cert_verifier import IssuerInfo, IssuerKey
 from cert_verifier import TransactionData
 from cert_verifier.errors import *
 
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+
 
 def createTransactionLookupConnector(chain=Chain.bitcoin_mainnet, options=None):
     """
@@ -42,8 +45,6 @@ class TransactionLookupConnector:
         return self.parse_tx(json_response)
 
     def fetch_tx(self, txid):
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
         r = requests.get(self.url % txid, headers=headers)
         if r.status_code != 200:
             logging.error('Error looking up transaction_id with url=%s, status_code=%d', self.url % txid, r.status_code)
@@ -222,17 +223,26 @@ class EtherscanConnector(TransactionLookupConnector):
                 'unsupported chain (%s) requested with Etherscan collector. Currently only mainnet and ropsten are supported' % chain)
 
         self.url = url_prefix + '/api?module=proxy&action=eth_getTransactionByHash&apikey=' + api_key + '&txhash=%s'
+        self.timestamp_url = url_prefix + '/api?module=block&action=getblockreward&apikey=' + api_key + '&blockno=%s'
 
     def parse_tx(self, json_response):
-        # TODO: need time_utc, which we can get from another API
-        #time = json_response['data']['time_utc']
+        # https://api.etherscan.io/
         signing_key = json_response['result']['from']
         script = json_response['result']['input']
-
+        block_no = json_response['result']['blockNumber']
         if not script:
             logging.error('transaction response is missing input: %s', json_response)
             raise InvalidTransactionError('transaction response is missing input')
-        return TransactionData(signing_key, script, date_time_utc=None, revoked_addresses=None)
+        if not block_no:
+            logging.error('transaction is not yet confirmed: %s', json_response)
+            raise InvalidTransactionError('transaction is not yet confirmed')
+        ts_url = self.timestamp_url % str(int(block_no, 16))
+        r = requests.get(ts_url, headers=headers)
+        if r.status_code != 200:
+            logging.error('Error looking up block timestamp with url=%s, status_code=%d', ts_url, r.status_code)
+            raise InvalidTransactionError('error looking up block timestamp=%s' % block_no)
+        date_time = r.json()['result']['timeStamp']
+        return TransactionData(signing_key, script, date_time_utc=int(date_time), revoked_addresses=None)
 
 
 def get_field_or_default(data, field_name):

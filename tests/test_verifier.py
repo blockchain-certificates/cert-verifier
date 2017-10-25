@@ -80,6 +80,10 @@ class TestVerify(unittest.TestCase):
         result = verifier.verify_certificate_file('data/2.0/regtest.json')
         self.assertEquals(StepStatus.mock_passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
+    def test_verify_cert_file_v2_eth_ropsten(self):
+        options = {'etherscan_api_token':'YRBJPTCAJEG8FH4WHR76BNFCN24DGHY8GV8'}
+        result = verifier.verify_certificate_file('data/2.0/eth_ropsten.json', options=options)
+        self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
 if __name__ == '__main__':
     unittest.main()

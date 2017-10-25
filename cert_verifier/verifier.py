@@ -16,12 +16,12 @@ from cert_verifier import connectors
 from cert_verifier.checks import create_verification_steps
 
 
-def verify_certificate(certificate_model):
+def verify_certificate(certificate_model, options={}):
     # lookup issuer-hosted information
     issuer_info = connectors.get_issuer_info(certificate_model)
 
     # lookup transaction information
-    connector = connectors.createTransactionLookupConnector(certificate_model.chain)
+    connector = connectors.createTransactionLookupConnector(certificate_model.chain, options)
     transaction_info = connector.lookup_tx(certificate_model.txid)
 
     # create verification plan
@@ -37,14 +37,14 @@ def verify_certificate(certificate_model):
     return messages
 
 
-def verify_certificate_file(certificate_file_name, transaction_id=None):
+def verify_certificate_file(certificate_file_name, transaction_id=None, options={}):
     with open(certificate_file_name, 'rb') as cert_fp:
         certificate_bytes = cert_fp.read()
         certificate_json = json.loads(certificate_bytes.decode('utf-8'))
         certificate_model = to_certificate_model(certificate_json=certificate_json,
                                                        txid=transaction_id,
                                                        certificate_bytes=certificate_bytes)
-        result = verify_certificate(certificate_model)
+        result = verify_certificate(certificate_model, options)
     return result
 
 

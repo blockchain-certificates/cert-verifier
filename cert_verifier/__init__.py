@@ -3,8 +3,12 @@ Verify blockchain certificates (http://www.blockcerts.org/)
 """
 
 import binascii
+import datetime
 import sys
 from enum import Enum
+
+import pytz
+from dateutil.parser import parse
 
 from cert_verifier.errors import *
 
@@ -37,7 +41,7 @@ class TransactionData:
         """
         self.signing_key = signing_key
         self.op_return = op_return
-        self.date_time_utc = date_time_utc
+        self.date_time_utc = parse_or_none(date_time_utc)
         self.revoked_addresses = revoked_addresses
 
 
@@ -66,6 +70,21 @@ class IssuerInfo(object):
 class IssuerKey(object):
     def __init__(self, public_key, created=None, expires=None, revoked=None):
         self.public_key = public_key
-        self.created = created
-        self.expires = expires
-        self.revoked = revoked
+        self.created = parse_or_none(created)
+        self.expires = parse_or_none(expires)
+        self.revoked = parse_or_none(revoked)
+
+
+def parse_or_none(time):
+    if time is None:
+        return None
+    try:
+        parsed_date = parse(time)
+    except:
+        # try parsing as unix ms
+        parsed_date = datetime.datetime.fromtimestamp(time)
+
+    utc = pytz.UTC
+    if parsed_date.tzinfo is None or parsed_date.tzinfo.utcoffset(parsed_date) is None:
+        parsed_date = utc.localize(parsed_date)
+    return parsed_date

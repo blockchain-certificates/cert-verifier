@@ -14,6 +14,7 @@ import json
 from cert_core import to_certificate_model
 from cert_verifier import connectors
 from cert_verifier.checks import create_verification_steps
+import sys
 
 
 def verify_certificate(certificate_model, options={}):
@@ -49,6 +50,11 @@ def verify_certificate_file(certificate_file_name, transaction_id=None, options=
 
 
 if __name__ == "__main__":
-    # This one should pass
-    result = verify_certificate_file('../tests/data/2.0/valid.json')
-    print(result)
+    if len(sys.argv) > 1:
+        for cert_file in sys.argv[1:]:
+            print(cert_file)
+            result = verify_certificate_file(cert_file)
+            print(result)
+    else:
+        result = verify_certificate_file('../tests/data/2.0/valid.json')
+        print(result)

@@ -175,7 +175,7 @@ class BlockcypherConnector(TransactionLookupConnector):
 
 
 def get_remote_json(the_url):
-    r = requests.get(the_url)
+    r = requests.get(the_url, timeout=10) # timeout is in seconds
     if r.status_code != 200:
         logging.error('Error looking up url=%s, status_code=%d', the_url, r.status_code)
         return None

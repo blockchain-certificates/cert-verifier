@@ -27,7 +27,7 @@ def createTransactionLookupConnector(chain=Chain.bitcoin_mainnet, options=None):
         if options and 'etherscan_api_token' in options:
             etherscan_api_token = options['etherscan_api_token']
         else:
-            etherscan_api_token = None
+            etherscan_api_token = ''
         return EtherscanConnector(chain, etherscan_api_token)
     return FallbackConnector(chain)
 

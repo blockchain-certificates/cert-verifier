@@ -22,12 +22,12 @@ class TestVerify(unittest.TestCase):
         mock_transaction.op_return = 'e323ace7777459e737988f8c02944224f9d02d2ee58c60eaaf134dd2a36e7d32'
 
         checker = BinaryFileIntegrityChecker(content_to_verify, mock_transaction)
-        self.assertEquals(False, checker.do_execute())
+        self.assertEqual(False, checker.do_execute())
 
     def test_expired(self):
         expires = pytz.UTC.localize(datetime(2007, 12, 5))
         checker = ExpiredChecker(expires)
-        self.assertEquals(False, checker.do_execute())
+        self.assertEqual(False, checker.do_execute())
 
     def test_not_expired(self):
         now = datetime.utcnow()

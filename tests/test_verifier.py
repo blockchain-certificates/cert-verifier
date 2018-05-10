@@ -85,5 +85,9 @@ class TestVerify(unittest.TestCase):
         result = verifier.verify_certificate_file('data/2.0/eth_ropsten.json', options=options)
         self.assertEqual(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
 
+    def test_verify_cert_file_v2_eth_ropsten_no_api_token(self):
+        result = verifier.verify_certificate_file('data/2.0/eth_ropsten.json')
+        self.assertEquals(StepStatus.passed.name, result[VERIFICATION_RESULT_INDEX]['status'])
+
 if __name__ == '__main__':
     unittest.main()

@@ -70,7 +70,7 @@ class MockConnector(TransactionLookupConnector):
 class FallbackConnector(TransactionLookupConnector):
     def __init__(self, chain):
         self.chain = chain
-        self.connectors = [BlockcypherConnector(chain), BlockrIOConnector(chain)]
+        self.connectors = [BlockchainInfoConnector(chain), BlockcypherConnector(chain)]
 
     def lookup_tx(self, txid):
         exceptions = []
@@ -87,18 +87,23 @@ class FallbackConnector(TransactionLookupConnector):
 
 class BlockchainInfoConnector(TransactionLookupConnector):
     """
-    Lookup blockchain transactions using blockchain.info api. Currently only the 'mainnet' chain is supported in this
-    connector.
+    Lookup blockchain transactions using blockchain.info api. Currently the 'mainnet' and 'testnet' chains are supported in
+    this connector.
     """
 
     def __init__(self, chain=Chain.bitcoin_mainnet):
-        if chain != Chain.bitcoin_mainnet:
-            raise Exception('only mainnet chain is supported with blockchain.info collector')
-        self.url = 'https://blockchain.info/rawtx/%s?cors=true'
+        if chain == Chain.bitcoin_testnet:
+            self.url = 'https://testnet.blockchain.info/rawtx/%s?cors=true'
+        elif chain == Chain.bitcoin_mainnet:
+            self.url = 'https://blockchain.info/rawtx/%s?cors=true'
+        else:
+            raise Exception(
+                'unsupported chain (%s) requested with BlockchainInfo collector. Currently only testnet and mainnet are supported' % chain)
 
     def parse_tx(self, json_response):
         revoked = set()
         script = None
+        time = json_response['time']
         signing_key = json_response['inputs'][0]['prev_out']['addr']
         for o in json_response['out']:
             if int(o.get('value', 1)) == 0:
@@ -109,36 +114,6 @@ class BlockchainInfoConnector(TransactionLookupConnector):
         if not script:
             logging.error('transaction response is missing op_return script: %s', json_response)
             raise InvalidTransactionError('transaction response is missing op_return script' % json_response)
-        return TransactionData(signing_key, script, None, revoked)
-
-
-class BlockrIOConnector(TransactionLookupConnector):
-    def __init__(self, chain):
-        if chain == Chain.bitcoin_testnet:
-            self.url = 'https://tbtc.blockr.io/api/v1/tx/info/%s'
-        elif chain == Chain.bitcoin_mainnet:
-            self.url = 'https://btc.blockr.io/api/v1/tx/info/%s'
-        else:
-            raise Exception(
-                'unsupported chain (%s) requested with BlockrIO collector. Currently only testnet and mainnet are supported' % chain)
-
-    def parse_tx(self, json_response):
-        revoked = set()
-        script = None
-        time = json_response['data']['time_utc']
-        signing_key = json_response['data']['vins'][0]['address']
-        for o in json_response['data']['vouts']:
-            if float(o.get('amount', 1)) == 0:
-                if not 'extras' in o:
-                    script = None
-                else:
-                    script = o['extras']['script'][4:]
-            else:
-                if o.get('is_spent') and float(o.get('is_spent', 1)) == 49:
-                    revoked.add(o.get('address'))
-        if not script:
-            logging.error('transaction response is missing op_return script: %s', json_response)
-            raise InvalidTransactionError('transaction response is missing op_return script')
         return TransactionData(signing_key, script, time, revoked)
 
 

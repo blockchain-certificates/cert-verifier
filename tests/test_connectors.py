@@ -80,14 +80,6 @@ class TestConnectors(unittest.TestCase):
             self.assertEqual(1, len(data.revoked_addresses))
             self.assertTrue('1AAGG6jirbu9XwikFpkHokbbiYpjVtFe1G' in data.revoked_addresses)
 
-    def test_blockrio_parsing(self):
-        with open('data/transaction_responses/blockrio.json') as trx_file:
-            trx_json = json.load(trx_file)
-            connector = BlockrIOConnector(chain=Chain.bitcoin_mainnet)
-            data = connector.parse_tx(trx_json)
-            self.assertEqual(data.op_return, '8d18189b12ae315bb3d70c138c78ff76ab5130484187c33d1a9187bc29ca8d30')
-            self.assertEqual('mh2B8UhBUAiyPCw6ryB3me4cQen3Nr4m7E', data.signing_key)
-
     def test_etherscan_parsing(self):
         with open('data/transaction_responses/etherscan_tx.json') as trx_file:
             trx_json = json.load(trx_file)

@@ -1,5 +1,5 @@
-cert-core>=2.1.9
-cert-schema>=2.1.5
+cert-core>=2.1.10
+cert-schema>=3.0.0a9
 chainpoint==0.0.2
 enum34>=1.1.6;python_version<"3.5"
 functional>=0.4
